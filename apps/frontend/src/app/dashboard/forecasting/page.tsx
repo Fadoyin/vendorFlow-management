@@ -460,7 +460,7 @@ export default function AdminForecastingPage() {
                               <div>
                                 <p className="text-green-600 text-sm font-medium">Total Forecast</p>
                                 <p className="text-2xl font-bold text-green-900">
-                                  {formatCurrency(costResult.totalForecast)}
+                                  {formatCurrency(costResult.monthlyPredictions?.reduce((sum: number, month: any) => sum + month.totalCost, 0) || 0)}
                                 </p>
                               </div>
                               <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
@@ -476,7 +476,7 @@ export default function AdminForecastingPage() {
                               <div>
                                 <p className="text-blue-600 text-sm font-medium">Monthly Average</p>
                                 <p className="text-2xl font-bold text-blue-900">
-                                  {formatCurrency(costResult.monthlyAverage)}
+                                  {formatCurrency((costResult.monthlyPredictions?.reduce((sum: number, month: any) => sum + month.totalCost, 0) || 0) / (costResult.monthlyPredictions?.length || 1))}
                                 </p>
                               </div>
                               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -492,10 +492,10 @@ export default function AdminForecastingPage() {
                         <div className="bg-gray-50 rounded-lg p-4">
                           <h4 className="font-medium text-gray-900 mb-3">Monthly Breakdown</h4>
                           <div className="space-y-2">
-                            {costResult.monthlyBreakdown?.map((month: any, index: number) => (
+                            {costResult.monthlyPredictions?.map((month: any, index: number) => (
                               <div key={index} className="flex items-center justify-between py-2 px-3 bg-white rounded border">
                                 <span className="text-sm font-medium text-gray-700">{month.month}</span>
-                                <span className="text-sm font-semibold text-gray-900">{formatCurrency(month.amount)}</span>
+                                <span className="text-sm font-semibold text-gray-900">{formatCurrency(month.totalCost)}</span>
                               </div>
                             ))}
                           </div>
@@ -856,14 +856,26 @@ export default function AdminForecastingPage() {
                         </div>
 
                         {/* Top Items */}
-                        {demandResult.topItems && (
+                        {demandResult.categoryAnalysis && demandResult.categoryAnalysis.length > 0 && demandResult.categoryAnalysis[0].topItems && (
                           <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <h4 className="font-medium text-gray-900 mb-3">Top Demand Items</h4>
+                            <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              </svg>
+                              High Demand Items
+                            </h4>
                             <div className="space-y-2">
-                              {demandResult.topItems.map((item: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded">
-                                  <span className="text-sm font-medium text-gray-700">{item.name}</span>
-                                  <span className="text-sm font-semibold text-gray-900">{item.demand} units</span>
+                              {demandResult.categoryAnalysis[0].topItems.map((item: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors">
+                                  <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      index === 0 ? 'bg-yellow-500' :
+                                      index === 1 ? 'bg-gray-400' :
+                                      index === 2 ? 'bg-orange-500' : 'bg-blue-500'
+                                    }`}></div>
+                                    {item.itemName || item.name}
+                                  </span>
+                                  <span className="text-sm font-semibold text-gray-900">{item.predictedDemand || item.demand} units</span>
                                 </div>
                               ))}
                             </div>
@@ -873,17 +885,75 @@ export default function AdminForecastingPage() {
                         {/* Business Insights */}
                         {demandResult.businessInsights && (
                           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                            <h4 className="font-medium text-green-900 mb-2 flex items-center gap-2">
+                            <h4 className="font-medium text-green-900 mb-3 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                               </svg>
-                              Business Insights
+                              Strategic Insights
                             </h4>
-                            <ul className="space-y-1">
-                              {demandResult.businessInsights.map((insight: string, index: number) => (
-                                <li key={index} className="text-sm text-green-800">• {insight}</li>
-                              ))}
-                            </ul>
+                            
+                            {/* Key Findings */}
+                            {demandResult.businessInsights.keyFindings && demandResult.businessInsights.keyFindings.length > 0 && (
+                              <div className="mb-4">
+                                <h5 className="text-sm font-medium text-green-800 mb-2">Key Findings:</h5>
+                                <ul className="space-y-1">
+                                  {demandResult.businessInsights.keyFindings.map((finding: string, index: number) => (
+                                    <li key={index} className="text-sm text-green-800">• {finding}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Actionable Recommendations */}
+                            {demandResult.businessInsights.actionableRecommendations && demandResult.businessInsights.actionableRecommendations.length > 0 && (
+                              <div className="mb-4">
+                                <h5 className="text-sm font-medium text-green-800 mb-2">Recommendations:</h5>
+                                <div className="space-y-2">
+                                  {demandResult.businessInsights.actionableRecommendations.map((rec: any, index: number) => (
+                                    <div key={index} className="bg-green-100 rounded p-2">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className={`px-2 py-1 text-xs rounded ${
+                                          rec.priority === 'high' ? 'bg-red-200 text-red-800' :
+                                          rec.priority === 'medium' ? 'bg-yellow-200 text-yellow-800' :
+                                          'bg-blue-200 text-blue-800'
+                                        }`}>
+                                          {rec.priority}
+                                        </span>
+                                        <span className="text-xs text-green-700 font-medium">{rec.category}</span>
+                                      </div>
+                                      <p className="text-sm text-green-800">{rec.recommendation}</p>
+                                      <div className="text-xs text-green-600 mt-1">
+                                        Impact: {rec.expectedImpact} | Timeframe: {rec.timeframe}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Risk Factors */}
+                            {demandResult.businessInsights.riskFactors && demandResult.businessInsights.riskFactors.length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-medium text-green-800 mb-2">Risk Factors:</h5>
+                                <div className="space-y-2">
+                                  {demandResult.businessInsights.riskFactors.map((risk: any, index: number) => (
+                                    <div key={index} className="bg-amber-50 border border-amber-200 rounded p-2">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className={`px-2 py-1 text-xs rounded ${
+                                          risk.impact === 'high' ? 'bg-red-200 text-red-800' :
+                                          risk.impact === 'medium' ? 'bg-yellow-200 text-yellow-800' :
+                                          'bg-green-200 text-green-800'
+                                        }`}>
+                                          {risk.impact} impact
+                                        </span>
+                                      </div>
+                                      <p className="text-sm text-amber-800 font-medium">{risk.factor}</p>
+                                      <p className="text-xs text-amber-700 mt-1">Mitigation: {risk.mitigation}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
