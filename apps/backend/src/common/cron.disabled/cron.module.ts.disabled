@@ -1,0 +1,36 @@
+import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
+import { MongooseModule } from '@nestjs/mongoose';
+import { ConfigModule } from '@nestjs/config';
+import { CronService } from './cron.service';
+import { EmailModule } from '../email/email.module';
+import {
+  Forecast,
+  ForecastSchema,
+} from '../../modules/forecasting/schemas/forecast.schema';
+import {
+  Notification,
+  NotificationSchema,
+} from '../../modules/notifications/schemas/notification.schema';
+import { Order, OrderSchema } from '../../common/schemas/order.schema';
+import {
+  PaymentTransaction,
+  PaymentTransactionSchema,
+} from '../../modules/payments/schemas/payment-transaction.schema';
+
+@Module({
+  imports: [
+    ScheduleModule.forRoot(),
+    ConfigModule,
+    EmailModule,
+    MongooseModule.forFeature([
+      { name: Forecast.name, schema: ForecastSchema },
+      { name: Notification.name, schema: NotificationSchema },
+      { name: Order.name, schema: OrderSchema },
+      { name: PaymentTransaction.name, schema: PaymentTransactionSchema },
+    ]),
+  ],
+  providers: [CronService],
+  exports: [CronService],
+})
+export class CronModule {}

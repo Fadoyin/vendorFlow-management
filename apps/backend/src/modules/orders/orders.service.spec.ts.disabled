@@ -1,0 +1,413 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
+import { OrdersService } from './orders.service';
+import { Order, OrderStatus } from '../../common/schemas/order.schema';
+import { RBACService, UserContext } from '../../common/services/rbac.service';
+import { UserRole } from '../users/schemas/user.schema';
+import { Types } from 'mongoose';
+import { CreateOrderDto } from './dto/create-order.dto';
+
+describe('OrdersService RBAC Tests', () => {
+  let service: OrdersService;
+  let rbacService: RBACService;
+  let mockOrderModel: any;
+
+  const mockTenantId = new Types.ObjectId();
+  const mockVendorId = new Types.ObjectId();
+  const mockSupplierId = new Types.ObjectId();
+
+  // Mock user contexts for different roles
+  const adminUser: UserContext = {
+    sub: 'admin-user-id',
+    email: 'admin@company.com',
+    role: UserRole.ADMIN,
+    tenantId: mockTenantId.toString(),
+  };
+
+  const vendorUser: UserContext = {
+    sub: 'vendor-user-id',
+    email: 'vendor@company.com',
+    role: UserRole.VENDOR,
+    tenantId: mockTenantId.toString(),
+    vendorProfile: mockVendorId.toString(),
+  };
+
+  const supplierUser: UserContext = {
+    sub: mockSupplierId.toString(), // Supplier ID matches user ID
+    email: 'supplier@company.com',
+    role: UserRole.SUPPLIER,
+    tenantId: mockTenantId.toString(),
+  };
+
+  const mockOrder = {
+    _id: new Types.ObjectId(),
+    tenantId: mockTenantId,
+    orderId: 'ORD-2024-001',
+    vendorId: mockVendorId,
+    supplierId: mockSupplierId,
+    status: OrderStatus.PLACED,
+    priority: 'medium',
+    orderDate: new Date(),
+    items: [
+      {
+        inventoryId: new Types.ObjectId(),
+        stockName: 'Test Item',
+        sku: 'TEST-001',
+        quantity: 10,
+        unitPrice: 100,
+        totalPrice: 1000,
+      },
+    ],
+    subtotal: 1000,
+    totalAmount: 1000,
+    isActive: true,
+  };
+
+  const mockCreateOrderDto: CreateOrderDto = {
+    orderId: 'ORD-2024-002',
+    vendorId: mockVendorId.toString(),
+    supplierId: mockSupplierId.toString(),
+    orderDate: new Date().toISOString(),
+          items: [
+        {
+          itemId: new Types.ObjectId().toString(),
+          itemName: 'Test Item 2',
+          sku: 'TEST-002',
+          quantity: 5,
+          unitPrice: 200,
+        },
+      ],
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    mockOrderModel = {
+      new: jest.fn().mockReturnValue(mockOrder),
+      constructor: jest.fn().mockReturnValue(mockOrder),
+      find: jest.fn().mockReturnValue({
+        sort: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            skip: jest.fn().mockReturnValue({
+              exec: jest.fn().mockResolvedValue([mockOrder]),
+            }),
+          }),
+        }),
+        exec: jest.fn().mockResolvedValue([mockOrder]),
+      }),
+      findOne: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockOrder),
+      }),
+      findById: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockOrder),
+      }),
+      aggregate: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue([
+          {
+            totalOrders: 1,
+            totalAmount: 1000,
+            averageOrderValue: 1000,
+            statusCounts: { placed: 1 },
+          },
+        ]),
+      }),
+      save: jest.fn().mockResolvedValue(mockOrder),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        OrdersService,
+        RBACService,
+        {
+          provide: getModelToken(Order.name),
+          useValue: mockOrderModel,
+        },
+      ],
+    }).compile();
+
+    service = module.get<OrdersService>(OrdersService);
+    rbacService = module.get<RBACService>(RBACService);
+  });
+
+  describe('RBAC Filtering Tests', () => {
+    it('should allow admin to access all orders', async () => {
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.findAll({}, adminUser);
+      
+      expect(spy).toHaveBeenCalledWith(adminUser, {});
+      expect(mockOrderModel.find).toHaveBeenCalled();
+    });
+
+    it('should filter orders by vendorId for vendor users', async () => {
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.findAll({}, vendorUser);
+      
+      expect(spy).toHaveBeenCalledWith(vendorUser, {});
+      // Verify that the filter includes vendorId restriction
+      const expectedFilter = rbacService.buildOrderFilter(vendorUser, {});
+      expect(expectedFilter.vendorId).toEqual(mockVendorId);
+      expect(expectedFilter.tenantId).toEqual(mockTenantId);
+    });
+
+    it('should filter orders by supplierId for supplier users', async () => {
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.findAll({}, supplierUser);
+      
+      expect(spy).toHaveBeenCalledWith(supplierUser, {});
+      // Verify that the filter includes supplierId restriction
+      const expectedFilter = rbacService.buildOrderFilter(supplierUser, {});
+      expect(expectedFilter.supplierId).toEqual(mockSupplierId);
+      expect(expectedFilter.tenantId).toEqual(mockTenantId);
+    });
+
+    it('should enforce tenant isolation for all users', async () => {
+      const differentTenantUser: UserContext = {
+        ...adminUser,
+        tenantId: new Types.ObjectId().toString(), // Different tenant
+      };
+      
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.findAll({}, differentTenantUser);
+      
+      const expectedFilter = rbacService.buildOrderFilter(differentTenantUser, {});
+      expect(expectedFilter.tenantId.toString()).not.toEqual(mockTenantId.toString());
+    });
+  });
+
+  describe('Order Creation RBAC', () => {
+    it('should allow admin to create orders for any vendor/supplier', async () => {
+      const spy = jest.spyOn(rbacService, 'canCreateResource');
+      
+      await service.create(mockCreateOrderDto, adminUser);
+      
+      expect(spy).toHaveBeenCalledWith(adminUser, mockCreateOrderDto, 'order');
+      expect(mockOrderModel.save).toHaveBeenCalled();
+    });
+
+    it('should allow vendor to create orders for their own vendorProfile', async () => {
+      const vendorOrderDto = {
+        ...mockCreateOrderDto,
+        vendorId: mockVendorId.toString(), // Matches vendor user's profile
+      };
+      
+      const spy = jest.spyOn(rbacService, 'canCreateResource');
+      
+      await service.create(vendorOrderDto, vendorUser);
+      
+      expect(spy).toHaveBeenCalledWith(vendorUser, vendorOrderDto, 'order');
+    });
+
+    it('should prevent vendor from creating orders for other vendors', async () => {
+      const otherVendorOrderDto = {
+        ...mockCreateOrderDto,
+        vendorId: new Types.ObjectId().toString(), // Different vendor
+      };
+      
+      const spy = jest.spyOn(rbacService, 'canCreateResource').mockReturnValue(false);
+      
+      await expect(service.create(otherVendorOrderDto, vendorUser))
+        .rejects.toThrow('You do not have permission to create this order');
+      
+      expect(spy).toHaveBeenCalledWith(vendorUser, otherVendorOrderDto, 'order');
+    });
+
+    it('should allow supplier to create orders assigned to themselves', async () => {
+      const supplierOrderDto = {
+        ...mockCreateOrderDto,
+        supplierId: mockSupplierId.toString(), // Matches supplier user ID
+      };
+      
+      const spy = jest.spyOn(rbacService, 'canCreateResource');
+      
+      await service.create(supplierOrderDto, supplierUser);
+      
+      expect(spy).toHaveBeenCalledWith(supplierUser, supplierOrderDto, 'order');
+    });
+  });
+
+  describe('Individual Order Access', () => {
+    it('should allow admin to access any order', async () => {
+      const result = await service.findOne(mockOrder._id.toString(), adminUser);
+      
+      expect(result).toBeDefined();
+      expect(mockOrderModel.findOne).toHaveBeenCalled();
+    });
+
+    it('should allow vendor to access their own orders only', async () => {
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.findOne(mockOrder._id.toString(), vendorUser);
+      
+      expect(spy).toHaveBeenCalledWith(vendorUser, { _id: mockOrder._id });
+      const expectedFilter = rbacService.buildOrderFilter(vendorUser, { _id: mockOrder._id });
+      expect(expectedFilter.vendorId).toEqual(mockVendorId);
+    });
+
+    it('should allow supplier to access their assigned orders only', async () => {
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.findOne(mockOrder._id.toString(), supplierUser);
+      
+      expect(spy).toHaveBeenCalledWith(supplierUser, { _id: mockOrder._id });
+      const expectedFilter = rbacService.buildOrderFilter(supplierUser, { _id: mockOrder._id });
+      expect(expectedFilter.supplierId).toEqual(mockSupplierId);
+    });
+  });
+
+  describe('Order Statistics RBAC', () => {
+    it('should return filtered statistics based on user role', async () => {
+      const spy = jest.spyOn(rbacService, 'buildOrderFilter');
+      
+      await service.getOrderStats(vendorUser);
+      
+      expect(spy).toHaveBeenCalledWith(vendorUser);
+      expect(mockOrderModel.aggregate).toHaveBeenCalled();
+      
+      // Verify that the aggregation includes the role-based filter
+      const aggregateCall = mockOrderModel.aggregate.mock.calls[0][0];
+      expect(aggregateCall[0]).toHaveProperty('$match');
+    });
+  });
+});
+
+describe('RBACService Unit Tests', () => {
+  let rbacService: RBACService;
+
+  beforeEach(() => {
+    rbacService = new RBACService();
+  });
+
+  const mockTenantId = new Types.ObjectId();
+  const mockVendorId = new Types.ObjectId();
+  const mockSupplierId = new Types.ObjectId();
+
+  const adminUser: UserContext = {
+    sub: 'admin-id',
+    email: 'admin@test.com',
+    role: UserRole.ADMIN,
+    tenantId: mockTenantId.toString(),
+  };
+
+  const vendorUser: UserContext = {
+    sub: 'vendor-id',
+    email: 'vendor@test.com',
+    role: UserRole.VENDOR,
+    tenantId: mockTenantId.toString(),
+    vendorProfile: mockVendorId.toString(),
+  };
+
+  const supplierUser: UserContext = {
+    sub: mockSupplierId.toString(),
+    email: 'supplier@test.com',
+    role: UserRole.SUPPLIER,
+    tenantId: mockTenantId.toString(),
+  };
+
+  describe('buildOrderFilter', () => {
+    it('should return tenant-only filter for admin', () => {
+      const filter = rbacService.buildOrderFilter(adminUser);
+      
+      expect(filter).toEqual({
+        tenantId: mockTenantId,
+      });
+    });
+
+    it('should return tenant + vendor filter for vendor', () => {
+      const filter = rbacService.buildOrderFilter(vendorUser);
+      
+      expect(filter).toEqual({
+        tenantId: mockTenantId,
+        vendorId: mockVendorId,
+      });
+    });
+
+    it('should return tenant + supplier filter for supplier', () => {
+      const filter = rbacService.buildOrderFilter(supplierUser);
+      
+      expect(filter).toEqual({
+        tenantId: mockTenantId,
+        supplierId: mockSupplierId,
+      });
+    });
+
+    it('should merge additional filters correctly', () => {
+      const additionalFilters = { status: 'placed', priority: 'high' };
+      const filter = rbacService.buildOrderFilter(vendorUser, additionalFilters);
+      
+      expect(filter).toEqual({
+        tenantId: mockTenantId,
+        vendorId: mockVendorId,
+        status: 'placed',
+        priority: 'high',
+      });
+    });
+  });
+
+  describe('canCreateResource', () => {
+    it('should allow admin to create any resource', () => {
+      const resourceData = { vendorId: 'any-vendor', supplierId: 'any-supplier' };
+      const canCreate = rbacService.canCreateResource(adminUser, resourceData, 'order');
+      
+      expect(canCreate).toBe(true);
+    });
+
+    it('should allow vendor to create orders for their own vendor profile', () => {
+      const resourceData = { vendorId: mockVendorId.toString() };
+      const canCreate = rbacService.canCreateResource(vendorUser, resourceData, 'order');
+      
+      expect(canCreate).toBe(true);
+    });
+
+    it('should prevent vendor from creating orders for other vendors', () => {
+      const resourceData = { vendorId: 'other-vendor-id' };
+      const canCreate = rbacService.canCreateResource(vendorUser, resourceData, 'order');
+      
+      expect(canCreate).toBe(false);
+    });
+
+    it('should allow supplier to create orders assigned to themselves', () => {
+      const resourceData = { supplierId: mockSupplierId.toString() };
+      const canCreate = rbacService.canCreateResource(supplierUser, resourceData, 'order');
+      
+      expect(canCreate).toBe(true);
+    });
+
+    it('should prevent supplier from creating orders for other suppliers', () => {
+      const resourceData = { supplierId: 'other-supplier-id' };
+      const canCreate = rbacService.canCreateResource(supplierUser, resourceData, 'order');
+      
+      expect(canCreate).toBe(false);
+    });
+  });
+
+  describe('canAccessResource', () => {
+    it('should allow admin to access any resource', () => {
+      const canAccess = rbacService.canAccessResource(adminUser, 'any-resource-id', 'order');
+      
+      expect(canAccess).toBe(true);
+    });
+
+    it('should allow vendor to access their own vendor profile', () => {
+      const canAccess = rbacService.canAccessResource(vendorUser, mockVendorId.toString(), 'vendor');
+      
+      expect(canAccess).toBe(true);
+    });
+
+    it('should prevent vendor from accessing other vendor profiles', () => {
+      const canAccess = rbacService.canAccessResource(vendorUser, 'other-vendor-id', 'vendor');
+      
+      expect(canAccess).toBe(false);
+    });
+
+    it('should allow supplier to access their own profile', () => {
+      const canAccess = rbacService.canAccessResource(supplierUser, mockSupplierId.toString(), 'supplier');
+      
+      expect(canAccess).toBe(true);
+    });
+  });
+});
+

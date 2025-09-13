@@ -1,0 +1,391 @@
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Model, Document, FilterQuery, UpdateQuery } from 'mongoose';
+import { QueryBuilderService, QueryBuilderOptions, PaginatedResult } from './query-builder.service';
+import { CacheService, CacheOptions } from './cache.service';
+
+export interface BaseEntity {
+  _id?: string;
+  tenantId?: string;
+  isDeleted?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface CreateOptions {
+  skipCache?: boolean;
+  validateTenant?: boolean;
+}
+
+export interface UpdateOptions extends CreateOptions {
+  upsert?: boolean;
+}
+
+export interface FindOptions extends QueryBuilderOptions {
+  cache?: boolean;
+  cacheTTL?: number;
+  validateTenant?: boolean;
+}
+
+@Injectable()
+export abstract class BaseService<T extends BaseEntity & Document> {
+  protected readonly logger: Logger;
+  protected readonly cacheNamespace: string;
+
+  constructor(
+    protected readonly model: Model<T>,
+    protected readonly queryBuilder: QueryBuilderService,
+    protected readonly cache: CacheService,
+    cacheNamespace?: string,
+  ) {
+    this.logger = new Logger(this.constructor.name);
+    this.cacheNamespace = cacheNamespace || model.modelName.toLowerCase();
+  }
+
+  /**
+   * Create a new entity with optimizations
+   */
+  async create(
+    createDto: Partial<T>,
+    tenantId?: string,
+    options: CreateOptions = {},
+  ): Promise<T> {
+    try {
+      const startTime = Date.now();
+
+      // Add tenant and audit fields
+      const entityData = {
+        ...createDto,
+        ...(tenantId && { tenantId }),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Validate required fields
+      await this.validateCreate(entityData);
+
+      const entity = new this.model(entityData);
+      const saved = await entity.save();
+
+      // Clear related cache
+      if (!options.skipCache) {
+        await this.clearEntityCache(tenantId);
+      }
+
+      // Log performance
+      const executionTime = Date.now() - startTime;
+      this.logger.log(
+        `Created ${this.model.modelName} in ${executionTime}ms`,
+        { id: saved._id, tenantId }
+      );
+
+      return saved;
+    } catch (error) {
+      this.logger.error(`Error creating ${this.model.modelName}: ${error.message}`);
+      
+      if (error.code === 11000) {
+        throw new BadRequestException('Duplicate entry detected');
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Find all entities with caching and optimization
+   */
+  async findAll(
+    filter: FilterQuery<T> = {},
+    options: FindOptions = {},
+  ): Promise<PaginatedResult<T>> {
+    try {
+      const {
+        cache = true,
+        cacheTTL = 300,
+        validateTenant = true,
+        ...queryOptions
+      } = options;
+
+      // Build optimized filter
+      const optimizedFilter = this.buildBaseFilter(filter, validateTenant);
+      
+      // Generate cache key
+      const cacheKey = this.generateCacheKey('findAll', optimizedFilter, queryOptions);
+
+      // Try cache first
+      if (cache) {
+        const cached = await this.cache.get<PaginatedResult<T>>(
+          cacheKey,
+          { namespace: this.cacheNamespace, ttl: cacheTTL }
+        );
+        
+        if (cached) {
+          this.logger.debug(`Cache hit for findAll: ${this.model.modelName}`);
+          return cached;
+        }
+      }
+
+      // Execute query
+      const result = await this.queryBuilder.findWithPagination(
+        this.model,
+        optimizedFilter,
+        queryOptions,
+      );
+
+      // Cache result
+      if (cache && result.data.length > 0) {
+        await this.cache.set(
+          cacheKey,
+          result,
+          { namespace: this.cacheNamespace, ttl: cacheTTL }
+        );
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error finding ${this.model.modelName}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Find entity by ID with caching
+   */
+  async findById(
+    id: string,
+    tenantId?: string,
+    options: FindOptions = {},
+  ): Promise<T> {
+    try {
+      const { cache = true, cacheTTL = 600, validateTenant = true } = options;
+      
+      // Generate cache key
+      const cacheKey = this.generateCacheKey('findById', { id, tenantId });
+
+      // Try cache first
+      if (cache) {
+        const cached = await this.cache.get<T>(
+          cacheKey,
+          { namespace: this.cacheNamespace, ttl: cacheTTL }
+        );
+        
+        if (cached) {
+          this.logger.debug(`Cache hit for findById: ${this.model.modelName}:${id}`);
+          return cached;
+        }
+      }
+
+      // Build filter
+      const filter: FilterQuery<T> = { _id: id } as FilterQuery<T>;
+      if (validateTenant && tenantId) {
+        filter.tenantId = tenantId;
+      }
+      
+      const optimizedFilter = this.buildBaseFilter(filter, validateTenant);
+
+      // Execute query
+      const entity = await this.model
+        .findOne(optimizedFilter)
+        .lean()
+        .exec();
+
+      if (!entity) {
+        throw new NotFoundException(`${this.model.modelName} not found`);
+      }
+
+      // Cache result
+      if (cache) {
+        await this.cache.set(
+          cacheKey,
+          entity,
+          { namespace: this.cacheNamespace, ttl: cacheTTL }
+        );
+      }
+
+      return entity as T;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      this.logger.error(`Error finding ${this.model.modelName} by ID: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Update entity with optimizations
+   */
+  async update(
+    id: string,
+    updateDto: UpdateQuery<T>,
+    tenantId?: string,
+    options: UpdateOptions = {},
+  ): Promise<T> {
+    try {
+      const { validateTenant = true, skipCache = false } = options;
+
+      // Build filter
+      const filter: FilterQuery<T> = { _id: id } as FilterQuery<T>;
+      if (validateTenant && tenantId) {
+        filter.tenantId = tenantId;
+      }
+      
+      const optimizedFilter = this.buildBaseFilter(filter, validateTenant);
+
+      // Add update timestamp
+      const updateData = {
+        ...updateDto,
+        updatedAt: new Date(),
+      };
+
+      // Validate update
+      await this.validateUpdate(id, updateData, tenantId);
+
+      // Execute update
+      const updated = await this.model
+        .findOneAndUpdate(optimizedFilter, updateData, { 
+          new: true,
+          runValidators: true,
+        })
+        .lean()
+        .exec();
+
+      if (!updated) {
+        throw new NotFoundException(`${this.model.modelName} not found`);
+      }
+
+      // Clear cache
+      if (!skipCache) {
+        await this.clearEntityCache(tenantId, id);
+      }
+
+      this.logger.log(`Updated ${this.model.modelName}: ${id}`);
+      return updated as T;
+    } catch (error) {
+      this.logger.error(`Error updating ${this.model.modelName}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Soft delete entity
+   */
+  async delete(
+    id: string,
+    tenantId?: string,
+    options: UpdateOptions = {},
+  ): Promise<void> {
+    try {
+      await this.update(
+        id,
+        { isDeleted: true } as UpdateQuery<T>,
+        tenantId,
+        options,
+      );
+
+      this.logger.log(`Soft deleted ${this.model.modelName}: ${id}`);
+    } catch (error) {
+      this.logger.error(`Error deleting ${this.model.modelName}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get entity statistics
+   */
+  async getStats(tenantId?: string): Promise<any> {
+    try {
+      const cacheKey = this.generateCacheKey('stats', { tenantId });
+      
+      return await this.cache.wrap(
+        cacheKey,
+        async () => {
+          const filter = this.buildBaseFilter({}, true, tenantId);
+          
+          const [total, active, recent] = await Promise.all([
+            this.model.countDocuments(filter),
+            this.model.countDocuments({ ...filter, isDeleted: { $ne: true } }),
+            this.model.countDocuments({
+              ...filter,
+              createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+            }),
+          ]);
+
+          return { total, active, recent, timestamp: new Date() };
+        },
+        { namespace: this.cacheNamespace, ttl: 300 }
+      );
+    } catch (error) {
+      this.logger.error(`Error getting ${this.model.modelName} stats: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Build base filter with common optimizations
+   */
+  protected buildBaseFilter(
+    filter: FilterQuery<T>,
+    validateTenant = true,
+    tenantId?: string,
+  ): FilterQuery<T> {
+    const baseFilter = {
+      ...filter,
+      isDeleted: { $ne: true }, // Exclude soft-deleted entities
+    };
+
+    if (validateTenant && tenantId) {
+      baseFilter.tenantId = tenantId;
+    }
+
+    return baseFilter;
+  }
+
+  /**
+   * Generate consistent cache keys
+   */
+  protected generateCacheKey(operation: string, params: any): string {
+    const paramsStr = JSON.stringify(params);
+    const hash = Buffer.from(paramsStr).toString('base64').slice(0, 16);
+    return `${operation}:${hash}`;
+  }
+
+  /**
+   * Clear entity-related cache
+   */
+  protected async clearEntityCache(tenantId?: string, entityId?: string): Promise<void> {
+    try {
+      const patterns = [
+        'findAll:*',
+        'stats:*',
+      ];
+
+      if (entityId) {
+        patterns.push(`findById:*${entityId}*`);
+      }
+
+      await Promise.all(
+        patterns.map(pattern =>
+          this.cache.deletePattern(pattern, { namespace: this.cacheNamespace })
+        )
+      );
+    } catch (error) {
+      this.logger.warn(`Error clearing cache: ${error.message}`);
+    }
+  }
+
+  /**
+   * Validation hooks - override in child classes
+   */
+  protected async validateCreate(data: Partial<T>): Promise<void> {
+    // Override in child classes for specific validation
+  }
+
+  protected async validateUpdate(
+    id: string,
+    data: UpdateQuery<T>,
+    tenantId?: string,
+  ): Promise<void> {
+    // Override in child classes for specific validation
+  }
+} 

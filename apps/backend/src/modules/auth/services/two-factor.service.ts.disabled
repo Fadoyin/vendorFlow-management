@@ -1,0 +1,432 @@
+import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { InjectRedis } from '@nestjs-modules/ioredis';
+import { Redis } from 'ioredis';
+import * as speakeasy from 'speakeasy';
+import * as QRCode from 'qrcode';
+import * as crypto from 'crypto-js';
+import * as bcrypt from 'bcrypt';
+import { User } from '../../users/schemas/user.schema';
+import { ConfigService } from '@nestjs/config';
+
+export interface TwoFactorSetupData {
+  secret: string;
+  qrCodeUrl: string;
+  backupCodes: string[];
+}
+
+export interface OTPData {
+  code: string;
+  expiresAt: Date;
+  attempts: number;
+}
+
+@Injectable()
+export class TwoFactorService {
+  private readonly logger = new Logger(TwoFactorService.name);
+  private readonly encryptionKey: string;
+  private readonly appName = 'VendorFlow';
+
+  constructor(
+    @InjectModel(User.name) private userModel: Model<User>,
+    @InjectRedis() private readonly redis: Redis,
+    private configService: ConfigService,
+  ) {
+    this.encryptionKey = this.configService.get<string>('ENCRYPTION_KEY') || 'default-encryption-key-change-in-production';
+  }
+
+  /**
+   * Generate TOTP secret and QR code for setup
+   */
+  async generateTOTPSetup(userId: string, userEmail: string): Promise<TwoFactorSetupData> {
+    try {
+      // Generate secret
+      const secret = speakeasy.generateSecret({
+        name: `${this.appName} (${userEmail})`,
+        issuer: this.appName,
+        length: 32,
+      });
+
+      // Generate QR code
+      const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
+
+      // Generate backup codes
+      const backupCodes = this.generateBackupCodes();
+
+      return {
+        secret: secret.base32,
+        qrCodeUrl,
+        backupCodes,
+      };
+    } catch (error) {
+      this.logger.error(`Error generating TOTP setup for user ${userId}: ${error.message}`);
+      throw new BadRequestException('Failed to generate 2FA setup');
+    }
+  }
+
+  /**
+   * Enable 2FA for user
+   */
+  async enable2FA(userId: string, secret: string, token: string, backupCodes: string[]): Promise<void> {
+    try {
+      // Verify the token first
+      const isValid = speakeasy.totp.verify({
+        secret,
+        token,
+        window: 2,
+        time: Date.now() / 1000,
+      });
+
+      if (!isValid) {
+        throw new UnauthorizedException('Invalid 2FA token');
+      }
+
+      // Encrypt the secret
+      const encryptedSecret = this.encrypt(secret);
+
+      // Hash backup codes
+      const hashedBackupCodes = await Promise.all(
+        backupCodes.map(code => bcrypt.hash(code, 12))
+      );
+
+      // Update user
+      await this.userModel.findByIdAndUpdate(userId, {
+        twoFactorEnabled: true,
+        twoFactorSecret: encryptedSecret,
+        backupCodes: hashedBackupCodes,
+        failedLoginAttempts: 0,
+      });
+
+      this.logger.log(`2FA enabled for user ${userId}`);
+    } catch (error) {
+      this.logger.error(`Error enabling 2FA for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Disable 2FA for user
+   */
+  async disable2FA(userId: string, password: string): Promise<void> {
+    try {
+      const user = await this.userModel.findById(userId);
+      if (!user) {
+        throw new BadRequestException('User not found');
+      }
+
+      // Verify password
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Invalid password');
+      }
+
+      // Update user
+      await this.userModel.findByIdAndUpdate(userId, {
+        twoFactorEnabled: false,
+        twoFactorSecret: null,
+        backupCodes: [],
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      });
+
+      this.logger.log(`2FA disabled for user ${userId}`);
+    } catch (error) {
+      this.logger.error(`Error disabling 2FA for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify TOTP token
+   */
+  async verifyTOTP(userId: string, token: string): Promise<boolean> {
+    try {
+      const user = await this.userModel.findById(userId);
+      if (!user || !user.twoFactorEnabled || !user.twoFactorSecret) {
+        return false;
+      }
+
+      // Check if user is locked
+      if (await this.isUserLocked(userId)) {
+        throw new UnauthorizedException('Account temporarily locked due to too many failed attempts');
+      }
+
+      // Decrypt secret
+      const secret = this.decrypt(user.twoFactorSecret);
+
+      // Verify token
+      const isValid = speakeasy.totp.verify({
+        secret,
+        token,
+        window: 2,
+        time: Date.now() / 1000,
+      });
+
+      if (isValid) {
+        // Reset failed attempts on successful verification
+        await this.resetFailedAttempts(userId);
+        await this.userModel.findByIdAndUpdate(userId, {
+          lastTwoFactorAt: new Date(),
+        });
+        return true;
+      } else {
+        // Increment failed attempts
+        await this.incrementFailedAttempts(userId);
+        return false;
+      }
+    } catch (error) {
+      this.logger.error(`Error verifying TOTP for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify backup code
+   */
+  async verifyBackupCode(userId: string, code: string): Promise<boolean> {
+    try {
+      const user = await this.userModel.findById(userId);
+      if (!user || !user.twoFactorEnabled) {
+        return false;
+      }
+
+      // Check if user is locked
+      if (await this.isUserLocked(userId)) {
+        throw new UnauthorizedException('Account temporarily locked due to too many failed attempts');
+      }
+
+      // Check backup codes
+      for (let i = 0; i < user.backupCodes.length; i++) {
+        const isValid = await bcrypt.compare(code, user.backupCodes[i]);
+        if (isValid) {
+          // Remove used backup code
+          const updatedBackupCodes = [...user.backupCodes];
+          updatedBackupCodes.splice(i, 1);
+          
+          await this.userModel.findByIdAndUpdate(userId, {
+            backupCodes: updatedBackupCodes,
+            lastTwoFactorAt: new Date(),
+          });
+
+          await this.resetFailedAttempts(userId);
+          this.logger.log(`Backup code used for user ${userId}`);
+          return true;
+        }
+      }
+
+      // Increment failed attempts
+      await this.incrementFailedAttempts(userId);
+      return false;
+    } catch (error) {
+      this.logger.error(`Error verifying backup code for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate and send email OTP
+   */
+  async generateEmailOTP(userId: string, email: string): Promise<void> {
+    try {
+      // Check rate limiting
+      const rateLimitKey = `email_otp_rate_limit:${userId}`;
+      const attempts = await this.redis.get(rateLimitKey);
+      
+      if (attempts && parseInt(attempts) >= 3) {
+        throw new BadRequestException('Too many OTP requests. Please wait 15 minutes.');
+      }
+
+      // Generate 6-digit OTP
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      
+      // Store in Redis with 10-minute expiration
+      const otpData: OTPData = {
+        code: await bcrypt.hash(code, 10),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+        attempts: 0,
+      };
+
+      await this.redis.setex(`email_otp:${userId}`, 600, JSON.stringify(otpData));
+      
+      // Increment rate limiting
+      await this.redis.incr(rateLimitKey);
+      await this.redis.expire(rateLimitKey, 900); // 15 minutes
+
+      // TODO: Send email using email service
+      this.logger.log(`Email OTP generated for user ${userId}: ${code}`);
+      
+      // In development, log the OTP (remove in production)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔐 Email OTP for ${email}: ${code}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error generating email OTP for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify email OTP
+   */
+  async verifyEmailOTP(userId: string, code: string): Promise<boolean> {
+    try {
+      const otpDataStr = await this.redis.get(`email_otp:${userId}`);
+      if (!otpDataStr) {
+        return false;
+      }
+
+      const otpData: OTPData = JSON.parse(otpDataStr);
+      
+      // Check expiration
+      if (new Date() > otpData.expiresAt) {
+        await this.redis.del(`email_otp:${userId}`);
+        return false;
+      }
+
+      // Check attempts
+      if (otpData.attempts >= 5) {
+        await this.redis.del(`email_otp:${userId}`);
+        throw new UnauthorizedException('Too many failed OTP attempts');
+      }
+
+      // Verify code
+      const isValid = await bcrypt.compare(code, otpData.code);
+      
+      if (isValid) {
+        await this.redis.del(`email_otp:${userId}`);
+        await this.userModel.findByIdAndUpdate(userId, {
+          lastTwoFactorAt: new Date(),
+        });
+        return true;
+      } else {
+        // Increment attempts
+        otpData.attempts += 1;
+        await this.redis.setex(`email_otp:${userId}`, 600, JSON.stringify(otpData));
+        return false;
+      }
+    } catch (error) {
+      this.logger.error(`Error verifying email OTP for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate backup codes
+   */
+  private generateBackupCodes(): string[] {
+    const codes = [];
+    for (let i = 0; i < 10; i++) {
+      const code = Math.random().toString(36).substr(2, 8).toUpperCase();
+      codes.push(code);
+    }
+    return codes;
+  }
+
+  /**
+   * Encrypt data
+   */
+  private encrypt(text: string): string {
+    return crypto.AES.encrypt(text, this.encryptionKey).toString();
+  }
+
+  /**
+   * Decrypt data
+   */
+  private decrypt(encryptedText: string): string {
+    const bytes = crypto.AES.decrypt(encryptedText, this.encryptionKey);
+    return bytes.toString(crypto.enc.Utf8);
+  }
+
+  /**
+   * Check if user is locked
+   */
+  private async isUserLocked(userId: string): Promise<boolean> {
+    const user = await this.userModel.findById(userId);
+    if (!user) return false;
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Increment failed attempts
+   */
+  private async incrementFailedAttempts(userId: string): Promise<void> {
+    const user = await this.userModel.findById(userId);
+    if (!user) return;
+
+    const attempts = user.failedLoginAttempts + 1;
+    const updates: any = { failedLoginAttempts: attempts };
+
+    // Lock account after 5 failed attempts for 15 minutes
+    if (attempts >= 5) {
+      updates.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+    }
+
+    await this.userModel.findByIdAndUpdate(userId, updates);
+  }
+
+  /**
+   * Reset failed attempts
+   */
+  private async resetFailedAttempts(userId: string): Promise<void> {
+    await this.userModel.findByIdAndUpdate(userId, {
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+  }
+
+  /**
+   * Get 2FA status for user
+   */
+  async get2FAStatus(userId: string): Promise<{ enabled: boolean; backupCodesCount: number }> {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+
+    return {
+      enabled: user.twoFactorEnabled || false,
+      backupCodesCount: user.backupCodes?.length || 0,
+    };
+  }
+
+  /**
+   * Regenerate backup codes
+   */
+  async regenerateBackupCodes(userId: string, password: string): Promise<string[]> {
+    try {
+      const user = await this.userModel.findById(userId);
+      if (!user) {
+        throw new BadRequestException('User not found');
+      }
+
+      // Verify password
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        throw new UnauthorizedException('Invalid password');
+      }
+
+      // Generate new backup codes
+      const backupCodes = this.generateBackupCodes();
+      const hashedBackupCodes = await Promise.all(
+        backupCodes.map(code => bcrypt.hash(code, 12))
+      );
+
+      // Update user
+      await this.userModel.findByIdAndUpdate(userId, {
+        backupCodes: hashedBackupCodes,
+      });
+
+      this.logger.log(`Backup codes regenerated for user ${userId}`);
+      return backupCodes;
+    } catch (error) {
+      this.logger.error(`Error regenerating backup codes for user ${userId}: ${error.message}`);
+      throw error;
+    }
+  }
+} 

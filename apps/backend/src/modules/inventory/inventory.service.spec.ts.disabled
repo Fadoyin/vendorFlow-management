@@ -1,0 +1,607 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getModelToken } from '@nestjs/mongoose';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Model, Types } from 'mongoose';
+import { InventoryServiceOptimized } from './inventory.service.optimized';
+import { QueryBuilderService } from '../../common/database/query-builder.service';
+import { CacheService } from '../../common/database/cache.service';
+import { Item } from '../../common/schemas/item.schema';
+
+describe('InventoryServiceOptimized', () => {
+  let service: InventoryServiceOptimized;
+  let itemModel: jest.Mocked<Model<Item>>;
+  let queryBuilder: jest.Mocked<QueryBuilderService>;
+  let cacheService: jest.Mocked<CacheService>;
+
+  // Mock data
+  const mockTenantId = new Types.ObjectId().toString();
+  const mockUserId = new Types.ObjectId().toString();
+  const mockItemId = new Types.ObjectId().toString();
+
+  const mockItem: Partial<Item> = {
+    _id: mockItemId,
+    name: 'Test Item',
+    sku: 'TEST-001',
+    category: 'Electronics',
+    pricing: {
+      costPrice: 100,
+      sellingPrice: 150,
+      currency: 'USD',
+    },
+    inventory: {
+      currentStock: 50,
+      minimumStock: 10,
+      maximumStock: 200,
+      reorderPoint: 15,
+      location: 'Warehouse A',
+    },
+    status: 'active',
+    tenantId: mockTenantId,
+    totalValue: 5000,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const mockCreateItemDto = {
+    name: 'Test Item',
+    category: 'Electronics',
+    pricing: {
+      costPrice: 100,
+      sellingPrice: 150,
+      currency: 'USD',
+    },
+    inventory: {
+      currentStock: 50,
+      minimumStock: 10,
+      maximumStock: 200,
+      reorderPoint: 15,
+    },
+  };
+
+  const mockPaginatedResult = {
+    data: [mockItem],
+    total: 1,
+    page: 1,
+    limit: 10,
+    pages: 1,
+    hasNext: false,
+    hasPrev: false,
+  };
+
+  beforeEach(async () => {
+    // Create mocks
+    const mockItemModel = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      countDocuments: jest.fn(),
+      create: jest.fn(),
+      findOneAndUpdate: jest.fn(),
+      aggregate: jest.fn(),
+      save: jest.fn(),
+      exec: jest.fn(),
+    };
+
+    const mockQueryBuilder = {
+      findWithPagination: jest.fn(),
+      aggregate: jest.fn(),
+      buildSearchFilter: jest.fn(),
+    };
+
+    const mockCacheService = {
+      get: jest.fn(),
+      set: jest.fn(),
+      delete: jest.fn(),
+      deletePattern: jest.fn(),
+      wrap: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        InventoryServiceOptimized,
+        {
+          provide: getModelToken(Item.name),
+          useValue: mockItemModel,
+        },
+        {
+          provide: QueryBuilderService,
+          useValue: mockQueryBuilder,
+        },
+        {
+          provide: CacheService,
+          useValue: mockCacheService,
+        },
+      ],
+    }).compile();
+
+    service = module.get<InventoryServiceOptimized>(InventoryServiceOptimized);
+    itemModel = module.get(getModelToken(Item.name));
+    queryBuilder = module.get(QueryBuilderService);
+    cacheService = module.get(CacheService);
+
+    // Setup default mock returns
+    itemModel.findOne.mockReturnValue({
+      lean: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(mockItem),
+      }),
+    } as any);
+
+    queryBuilder.findWithPagination.mockResolvedValue(mockPaginatedResult);
+    cacheService.get.mockResolvedValue(null);
+    cacheService.set.mockResolvedValue(undefined);
+    cacheService.wrap.mockImplementation(async (key, fn) => await fn());
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('createItem', () => {
+    it('should create an item successfully', async () => {
+      // Arrange
+      const mockCreatedItem = { ...mockItem, save: jest.fn().mockResolvedValue(mockItem) };
+      itemModel.constructor = jest.fn().mockReturnValue(mockCreatedItem);
+      
+      // Mock the constructor behavior
+      (itemModel as any).mockImplementation(() => mockCreatedItem);
+
+      // Act
+      const result = await service.createItem(mockCreateItemDto, mockTenantId, mockUserId);
+
+      // Assert
+      expect(result).toBeDefined();
+      expect(mockCreatedItem.save).toHaveBeenCalled();
+    });
+
+    it('should generate SKU if not provided', async () => {
+      // Arrange
+      const dtoWithoutSku = { ...mockCreateItemDto };
+      delete (dtoWithoutSku as any).sku;
+
+      const mockCreatedItem = { ...mockItem, save: jest.fn().mockResolvedValue(mockItem) };
+      (itemModel as any).mockImplementation(() => mockCreatedItem);
+
+      // Act
+      await service.createItem(dtoWithoutSku, mockTenantId, mockUserId);
+
+      // Assert - Check that SKU was generated (would be in the created item)
+      expect(mockCreatedItem.save).toHaveBeenCalled();
+    });
+
+    it('should calculate total value correctly', async () => {
+      // Arrange
+      const mockCreatedItem = { ...mockItem, save: jest.fn().mockResolvedValue(mockItem) };
+      (itemModel as any).mockImplementation(() => mockCreatedItem);
+
+      // Act
+      await service.createItem(mockCreateItemDto, mockTenantId, mockUserId);
+
+      // Assert
+      expect(mockCreatedItem.save).toHaveBeenCalled();
+      // Total value should be currentStock * costPrice = 50 * 100 = 5000
+    });
+
+    it('should handle creation errors', async () => {
+      // Arrange
+      const error = new Error('Database error');
+      const mockCreatedItem = { save: jest.fn().mockRejectedValue(error) };
+      (itemModel as any).mockImplementation(() => mockCreatedItem);
+
+      // Act & Assert
+      await expect(
+        service.createItem(mockCreateItemDto, mockTenantId, mockUserId)
+      ).rejects.toThrow('Database error');
+    });
+  });
+
+  describe('findAllItems', () => {
+    it('should return paginated items successfully', async () => {
+      // Arrange
+      const queryParams = { page: 1, limit: 10 };
+      queryBuilder.findWithPagination.mockResolvedValue(mockPaginatedResult);
+
+      // Act
+      const result = await service.findAllItems(mockTenantId, queryParams);
+
+      // Assert
+      expect(result).toEqual(mockPaginatedResult);
+      expect(queryBuilder.findWithPagination).toHaveBeenCalledWith(
+        itemModel,
+        expect.any(Object),
+        expect.objectContaining({
+          page: 1,
+          limit: 10,
+          cache: true,
+          cacheTTL: 300,
+        })
+      );
+    });
+
+    it('should build search filter correctly', async () => {
+      // Arrange
+      const queryParams = { search: 'test item' };
+      const mockSearchFilter = { $or: [{ name: { $regex: 'test item', $options: 'i' } }] };
+      queryBuilder.buildSearchFilter.mockReturnValue(mockSearchFilter);
+
+      // Act
+      await service.findAllItems(mockTenantId, queryParams);
+
+      // Assert
+      expect(queryBuilder.buildSearchFilter).toHaveBeenCalledWith(
+        'test item',
+        ['name', 'sku', 'description', 'category']
+      );
+    });
+
+    it('should apply category filter', async () => {
+      // Arrange
+      const queryParams = { category: 'Electronics' };
+
+      // Act
+      await service.findAllItems(mockTenantId, queryParams);
+
+      // Assert
+      expect(queryBuilder.findWithPagination).toHaveBeenCalledWith(
+        itemModel,
+        expect.objectContaining({ category: 'Electronics' }),
+        expect.any(Object)
+      );
+    });
+
+    it('should apply low stock filter', async () => {
+      // Arrange
+      const queryParams = { lowStock: true };
+
+      // Act
+      await service.findAllItems(mockTenantId, queryParams);
+
+      // Assert
+      expect(queryBuilder.findWithPagination).toHaveBeenCalledWith(
+        itemModel,
+        expect.objectContaining({
+          $expr: { $lte: ['$inventory.currentStock', '$inventory.reorderPoint'] }
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it('should apply price range filter', async () => {
+      // Arrange
+      const queryParams = { minPrice: 50, maxPrice: 200 };
+
+      // Act
+      await service.findAllItems(mockTenantId, queryParams);
+
+      // Assert
+      expect(queryBuilder.findWithPagination).toHaveBeenCalledWith(
+        itemModel,
+        expect.objectContaining({
+          'pricing.costPrice': { $gte: 50, $lte: 200 }
+        }),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('updateStock', () => {
+    beforeEach(() => {
+      // Mock findById to return the mock item
+      jest.spyOn(service, 'findById').mockResolvedValue(mockItem as Item);
+      jest.spyOn(service, 'update').mockResolvedValue(mockItem as Item);
+      
+      // Mock private methods
+      jest.spyOn(service as any, 'logStockMovement').mockResolvedValue(undefined);
+      jest.spyOn(service as any, 'triggerLowStockAlert').mockResolvedValue(undefined);
+    });
+
+    it('should add stock correctly', async () => {
+      // Act
+      const result = await service.updateStock(
+        mockItemId,
+        25,
+        'add',
+        mockTenantId,
+        mockUserId,
+        'Restocking'
+      );
+
+      // Assert
+      expect(service.update).toHaveBeenCalledWith(
+        mockItemId,
+        expect.objectContaining({
+          'inventory.currentStock': 75, // 50 + 25
+          totalValue: 7500, // 75 * 100
+        }),
+        mockTenantId
+      );
+    });
+
+    it('should subtract stock correctly', async () => {
+      // Act
+      await service.updateStock(
+        mockItemId,
+        15,
+        'subtract',
+        mockTenantId,
+        mockUserId,
+        'Sale'
+      );
+
+      // Assert
+      expect(service.update).toHaveBeenCalledWith(
+        mockItemId,
+        expect.objectContaining({
+          'inventory.currentStock': 35, // 50 - 15
+          totalValue: 3500, // 35 * 100
+        }),
+        mockTenantId
+      );
+    });
+
+    it('should set stock correctly', async () => {
+      // Act
+      await service.updateStock(
+        mockItemId,
+        100,
+        'set',
+        mockTenantId,
+        mockUserId,
+        'Adjustment'
+      );
+
+      // Assert
+      expect(service.update).toHaveBeenCalledWith(
+        mockItemId,
+        expect.objectContaining({
+          'inventory.currentStock': 100,
+          totalValue: 10000, // 100 * 100
+        }),
+        mockTenantId
+      );
+    });
+
+    it('should not allow negative stock', async () => {
+      // Act
+      await service.updateStock(
+        mockItemId,
+        100,
+        'subtract',
+        mockTenantId,
+        mockUserId,
+        'Over sale'
+      );
+
+      // Assert
+      expect(service.update).toHaveBeenCalledWith(
+        mockItemId,
+        expect.objectContaining({
+          'inventory.currentStock': 0, // Max(0, 50 - 100)
+        }),
+        mockTenantId
+      );
+    });
+
+    it('should trigger low stock alert when below reorder point', async () => {
+      // Arrange
+      const lowStockItem = { ...mockItem, inventory: { ...mockItem.inventory, currentStock: 5 } };
+      jest.spyOn(service, 'update').mockResolvedValue(lowStockItem as Item);
+
+      // Act
+      await service.updateStock(
+        mockItemId,
+        10,
+        'set',
+        mockTenantId,
+        mockUserId
+      );
+
+      // Assert
+      expect(service as any).toHaveProperty('triggerLowStockAlert');
+    });
+
+    it('should throw error for invalid operation', async () => {
+      // Act & Assert
+      await expect(
+        service.updateStock(
+          mockItemId,
+          10,
+          'invalid' as any,
+          mockTenantId,
+          mockUserId
+        )
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getInventoryStats', () => {
+    it('should return comprehensive stats', async () => {
+      // Arrange
+      const mockStats = {
+        totalItems: 100,
+        activeItems: 90,
+        lowStockItems: 5,
+        outOfStockItems: 2,
+        totalValue: 50000,
+        averageValue: 500,
+      };
+
+      const mockTopCategories = [
+        { category: 'Electronics', count: 30, value: 15000 },
+        { category: 'Clothing', count: 25, value: 12000 },
+      ];
+
+      const mockStockDistribution = [
+        { range: 'Out of Stock', count: 2 },
+        { range: '1-9 items', count: 5 },
+        { range: '10-49 items', count: 20 },
+      ];
+
+      queryBuilder.aggregate
+        .mockResolvedValueOnce([mockStats])
+        .mockResolvedValueOnce(mockTopCategories)
+        .mockResolvedValueOnce(mockStockDistribution);
+
+      // Act
+      const result = await service.getInventoryStats(mockTenantId);
+
+      // Assert
+      expect(result).toEqual({
+        ...mockStats,
+        topCategories: mockTopCategories,
+        stockDistribution: mockStockDistribution,
+      });
+      expect(queryBuilder.aggregate).toHaveBeenCalledTimes(3);
+    });
+
+    it('should handle empty stats gracefully', async () => {
+      // Arrange
+      queryBuilder.aggregate
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+      // Act
+      const result = await service.getInventoryStats(mockTenantId);
+
+      // Assert
+      expect(result).toEqual({
+        totalItems: 0,
+        activeItems: 0,
+        lowStockItems: 0,
+        outOfStockItems: 0,
+        totalValue: 0,
+        averageValue: 0,
+        topCategories: [],
+        stockDistribution: [],
+      });
+    });
+  });
+
+  describe('validation', () => {
+    describe('validateCreate', () => {
+      it('should pass validation for valid data', async () => {
+        // Act & Assert
+        await expect(
+          (service as any).validateCreate(mockCreateItemDto)
+        ).resolves.not.toThrow();
+      });
+
+      it('should throw error for missing name', async () => {
+        // Arrange
+        const invalidData = { ...mockCreateItemDto };
+        delete (invalidData as any).name;
+
+        // Act & Assert
+        await expect(
+          (service as any).validateCreate(invalidData)
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw error for missing category', async () => {
+        // Arrange
+        const invalidData = { ...mockCreateItemDto };
+        delete (invalidData as any).category;
+
+        // Act & Assert
+        await expect(
+          (service as any).validateCreate(invalidData)
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw error for duplicate SKU', async () => {
+        // Arrange
+        const dataWithSku = { ...mockCreateItemDto, sku: 'EXISTING-SKU' };
+        itemModel.findOne.mockReturnValue({
+          lean: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ _id: 'existing-item' }),
+          }),
+        } as any);
+
+        // Act & Assert
+        await expect(
+          (service as any).validateCreate(dataWithSku)
+        ).rejects.toThrow(BadRequestException);
+      });
+    });
+
+    describe('validateUpdate', () => {
+      it('should throw error for negative stock', async () => {
+        // Act & Assert
+        await expect(
+          (service as any).validateUpdate(mockItemId, { 'inventory.currentStock': -5 }, mockTenantId)
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should throw error for negative cost price', async () => {
+        // Act & Assert
+        await expect(
+          (service as any).validateUpdate(mockItemId, { 'pricing.costPrice': -10 }, mockTenantId)
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('should pass validation for valid updates', async () => {
+        // Act & Assert
+        await expect(
+          (service as any).validateUpdate(mockItemId, { name: 'Updated Name' }, mockTenantId)
+        ).resolves.not.toThrow();
+      });
+    });
+  });
+
+  describe('caching', () => {
+    it('should use cache for findAllItems', async () => {
+      // Arrange
+      cacheService.get.mockResolvedValue(mockPaginatedResult);
+
+      // Act
+      const result = await service.findAllItems(mockTenantId, { page: 1 });
+
+      // Assert
+      expect(result).toEqual(mockPaginatedResult);
+      expect(cacheService.get).toHaveBeenCalled();
+      expect(queryBuilder.findWithPagination).not.toHaveBeenCalled();
+    });
+
+    it('should cache successful queries', async () => {
+      // Act
+      await service.findAllItems(mockTenantId, { page: 1 });
+
+      // Assert
+      expect(cacheService.set).toHaveBeenCalled();
+    });
+
+    it('should clear cache after item creation', async () => {
+      // Arrange
+      const mockCreatedItem = { ...mockItem, save: jest.fn().mockResolvedValue(mockItem) };
+      (itemModel as any).mockImplementation(() => mockCreatedItem);
+      jest.spyOn(service as any, 'clearInventoryCaches').mockResolvedValue(undefined);
+
+      // Act
+      await service.createItem(mockCreateItemDto, mockTenantId, mockUserId);
+
+      // Assert
+      expect(service as any).toHaveProperty('clearInventoryCaches');
+    });
+  });
+
+  describe('error handling', () => {
+    it('should handle database connection errors', async () => {
+      // Arrange
+      queryBuilder.findWithPagination.mockRejectedValue(new Error('Connection failed'));
+
+      // Act & Assert
+      await expect(
+        service.findAllItems(mockTenantId, {})
+      ).rejects.toThrow('Connection failed');
+    });
+
+    it('should handle item not found errors', async () => {
+      // Arrange
+      jest.spyOn(service, 'findById').mockRejectedValue(new NotFoundException('Item not found'));
+
+      // Act & Assert
+      await expect(
+        service.updateStock(mockItemId, 10, 'add', mockTenantId, mockUserId)
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+}); 

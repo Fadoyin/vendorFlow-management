@@ -1,0 +1,84 @@
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Response,
+  Logger,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
+import { Response as ExpressResponse } from 'express';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { UseGuards } from '@nestjs/common';
+import { AuthService } from '../auth.service';
+import { Public } from '../decorators/public.decorator';
+
+@ApiTags('Two-Factor Authentication')
+@Controller('auth/2fa')
+@UseGuards(ThrottlerGuard)
+export class Auth2FAController {
+  private readonly logger = new Logger(Auth2FAController.name);
+
+  constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Post('complete')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 300000 } }) // 5 attempts per 5 minutes
+  @ApiOperation({ 
+    summary: 'Complete 2FA login',
+    description: 'Complete login process with 2FA verification'
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tempToken: { type: 'string', description: 'Temporary token from initial login' },
+        code: { type: 'string', description: '2FA code (TOTP, backup code, or email OTP)' },
+        type: { type: 'string', enum: ['totp', 'backup', 'email'], description: 'Type of 2FA code' }
+      },
+      required: ['tempToken', 'code', 'type']
+    }
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: '2FA verification successful, login completed'
+  })
+  @ApiResponse({ 
+    status: 401, 
+    description: 'Invalid 2FA code or expired temporary token'
+  })
+  async complete2FA(
+    @Body() body: { tempToken: string; code: string; type: 'totp' | 'backup' | 'email' },
+    @Response({ passthrough: true }) res: ExpressResponse
+  ) {
+    try {
+      const result = await this.authService.completeTwoFactorLogin(
+        body.tempToken,
+        body.code,
+        body.type
+      );
+      
+      // Set refresh token as HTTP-only cookie
+      if (result.refresh_token) {
+        res.cookie('refresh_token', result.refresh_token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          path: '/api/auth',
+        });
+        
+        // Don't send refresh token in response body
+        delete result.refresh_token;
+      }
+      
+      this.logger.log(`2FA login completed successfully`);
+      return result;
+    } catch (error) {
+      this.logger.warn(`2FA completion failed:`, error.message);
+      throw error;
+    }
+  }
+} 

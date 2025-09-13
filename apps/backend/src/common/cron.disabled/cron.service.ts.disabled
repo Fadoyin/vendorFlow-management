@@ -1,0 +1,287 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { ConfigService } from '@nestjs/config';
+import {
+  Forecast,
+  ForecastStatus,
+} from '../../modules/forecasting/schemas/forecast.schema';
+import {
+  Notification,
+  NotificationStatus,
+} from '../../modules/notifications/schemas/notification.schema';
+import { Order, OrderStatus } from '../../common/schemas/order.schema';
+import {
+  PaymentTransaction,
+  PaymentStatus,
+} from '../../modules/payments/schemas/payment-transaction.schema';
+import { EmailService } from '../email/email.service';
+
+@Injectable()
+export class CronService {
+  private readonly logger = new Logger(CronService.name);
+
+  constructor(
+    @InjectModel(Forecast.name) private readonly forecastModel: Model<Forecast>,
+    @InjectModel(Notification.name)
+    private readonly notificationModel: Model<Notification>,
+    @InjectModel(Order.name) private readonly orderModel: Model<Order>,
+    @InjectModel(PaymentTransaction.name)
+    private readonly paymentModel: Model<PaymentTransaction>,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  // Clean up expired forecasts daily at 2 AM
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async cleanupExpiredForecasts() {
+    try {
+      this.logger.log('Starting expired forecasts cleanup...');
+
+      const expiredForecasts = await this.forecastModel.find({
+        expiresAt: { $lt: new Date() },
+        status: { $in: [ForecastStatus.COMPLETED, ForecastStatus.FAILED] },
+      });
+
+      if (expiredForecasts.length > 0) {
+        await this.forecastModel.updateMany(
+          { _id: { $in: expiredForecasts.map((f) => f._id) } },
+          { status: ForecastStatus.EXPIRED },
+        );
+
+        this.logger.log(
+          `Marked ${expiredForecasts.length} forecasts as expired`,
+        );
+      }
+    } catch (error) {
+      this.logger.error('Failed to cleanup expired forecasts:', error.message);
+    }
+  }
+
+  // Clean up old notifications weekly on Sunday at 3 AM
+  @Cron(CronExpression.EVERY_WEEK)
+  async cleanupOldNotifications() {
+    try {
+      this.logger.log('Starting old notifications cleanup...');
+
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const oldNotifications = await this.notificationModel.find({
+        createdAt: { $lt: thirtyDaysAgo },
+        status: { $in: [NotificationStatus.READ, NotificationStatus.FAILED] },
+      });
+
+      if (oldNotifications.length > 0) {
+        await this.notificationModel.deleteMany({
+          _id: { $in: oldNotifications.map((n) => n._id) },
+        });
+
+        this.logger.log(`Deleted ${oldNotifications.length} old notifications`);
+      }
+    } catch (error) {
+      this.logger.error('Failed to cleanup old notifications:', error.message);
+    }
+  }
+
+  // Generate daily reports at 6 AM
+  @Cron(CronExpression.EVERY_DAY_AT_6AM)
+  async generateDailyReports() {
+    try {
+      this.logger.log('Generating daily reports...');
+
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      // Get daily statistics
+      const dailyStats = await this.getDailyStatistics(yesterday);
+
+      // Send report to admins
+      await this.sendDailyReport(dailyStats);
+
+      this.logger.log('Daily reports generated successfully');
+    } catch (error) {
+      this.logger.error('Failed to generate daily reports:', error.message);
+    }
+  }
+
+  // Check for overdue orders every hour
+  @Cron(CronExpression.EVERY_HOUR)
+  async checkOverdueOrders() {
+    try {
+      this.logger.log('Checking for overdue orders...');
+
+      const now = new Date();
+      const overdueOrders = await this.orderModel.find({
+        expectedDelivery: { $lt: now },
+        status: {
+          $in: [
+            OrderStatus.CONFIRMED,
+            OrderStatus.DISPATCHED,
+            OrderStatus.ENROUTE,
+          ],
+        },
+      });
+
+      if (overdueOrders.length > 0) {
+        this.logger.warn(`Found ${overdueOrders.length} overdue orders`);
+
+        // Send notifications for overdue orders
+        for (const order of overdueOrders) {
+          await this.sendOverdueOrderNotification(order);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to check overdue orders:', error.message);
+    }
+  }
+
+  // Process failed payments daily at 9 AM
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async processFailedPayments() {
+    try {
+      this.logger.log('Processing failed payments...');
+
+      const failedPayments = await this.paymentModel.find({
+        status: PaymentStatus.FAILED,
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // Last 24 hours
+      });
+
+      if (failedPayments.length > 0) {
+        this.logger.log(
+          `Found ${failedPayments.length} failed payments to process`,
+        );
+
+        // Retry failed payments or send notifications
+        for (const payment of failedPayments) {
+          await this.processFailedPayment(payment);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to process failed payments:', error.message);
+    }
+  }
+
+  // Database maintenance weekly on Saturday at 4 AM
+  @Cron(CronExpression.EVERY_WEEK)
+  async performDatabaseMaintenance() {
+    try {
+      this.logger.log('Starting database maintenance...');
+
+      // This would typically involve:
+      // - Index optimization
+      // - Statistics updates
+      // - Log rotation
+      // - Performance monitoring
+
+      this.logger.log('Database maintenance completed');
+    } catch (error) {
+      this.logger.error('Database maintenance failed:', error.message);
+    }
+  }
+
+  private async getDailyStatistics(date: Date): Promise<any> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const [orders, payments, forecasts, notifications] = await Promise.all([
+      this.orderModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+      }),
+      this.paymentModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+      }),
+      this.forecastModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+      }),
+      this.notificationModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lte: endOfDay },
+      }),
+    ]);
+
+    return {
+      date: date.toISOString().split('T')[0],
+      orders,
+      payments,
+      forecasts,
+      notifications,
+    };
+  }
+
+  private async sendDailyReport(stats: any): Promise<void> {
+    try {
+      const adminEmails = this.configService
+        .get<string>('ADMIN_EMAILS', '')
+        .split(',');
+
+      if (adminEmails.length > 0 && adminEmails[0]) {
+        await this.emailService.sendEmail({
+          to: adminEmails,
+          subject: `Daily Report - ${stats.date}`,
+          template: 'daily-report',
+          context: stats,
+        });
+      }
+    } catch (error) {
+      this.logger.error('Failed to send daily report:', error.message);
+    }
+  }
+
+  private async sendOverdueOrderNotification(order: any): Promise<void> {
+    try {
+      // Create notification for overdue order
+      const notification = new this.notificationModel({
+        userId: order.vendorId,
+        type: 'order_status',
+        priority: 'high',
+        channel: 'in_app',
+        title: 'Order Overdue',
+        message: `Order ${order.orderId} is overdue. Expected delivery was ${order.expectedDelivery.toLocaleDateString()}`,
+        data: { orderId: order.orderId, status: 'overdue' },
+      });
+
+      await notification.save();
+      this.logger.log(
+        `Overdue order notification created for order ${order.orderId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        'Failed to create overdue order notification:',
+        error.message,
+      );
+    }
+  }
+
+  private async processFailedPayment(payment: any): Promise<void> {
+    try {
+      // Create notification for failed payment
+      const notification = new this.notificationModel({
+        userId: payment.vendorId,
+        type: 'payment',
+        priority: 'high',
+        channel: 'in_app',
+        title: 'Payment Failed',
+        message: `Payment ${payment.transactionId} for $${payment.amount} has failed. Please review and retry.`,
+        data: {
+          paymentId: payment.transactionId,
+          amount: payment.amount,
+          status: 'failed',
+        },
+      });
+
+      await notification.save();
+      this.logger.log(
+        `Failed payment notification created for payment ${payment.transactionId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        'Failed to create failed payment notification:',
+        error.message,
+      );
+    }
+  }
+}

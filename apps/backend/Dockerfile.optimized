@@ -1,0 +1,151 @@
+# ===================================================================
+# VendorFlow Backend - Optimized Production Dockerfile
+# ===================================================================
+# This Dockerfile uses multi-stage builds for smaller, more secure images
+
+# ===================================================================
+# STAGE 1: Dependencies & Build
+# ===================================================================
+FROM node:18-alpine AS dependencies
+
+# Install security updates and dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init && \
+    apk upgrade && \
+    rm -rf /var/cache/apk/*
+
+# Create app directory with proper permissions
+WORKDIR /app
+
+# Copy package files for better layer caching
+COPY package*.json ./
+COPY tsconfig*.json ./
+
+# Install dependencies with optimizations
+RUN npm ci --only=production --ignore-scripts && \
+    npm cache clean --force
+
+# ===================================================================
+# STAGE 2: Build Stage
+# ===================================================================
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy source code and dependencies
+COPY package*.json ./
+COPY tsconfig*.json ./
+COPY src/ ./src/
+
+# Install all dependencies (including dev dependencies for build)
+RUN npm ci --ignore-scripts
+
+# Build the application
+RUN npm run build && \
+    npm prune --production && \
+    npm cache clean --force
+
+# ===================================================================
+# STAGE 3: Runtime Stage
+# ===================================================================
+FROM node:18-alpine AS runtime
+
+# Install security updates and required packages
+RUN apk add --no-cache \
+    dumb-init \
+    curl \
+    && apk upgrade \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Set working directory
+WORKDIR /app
+
+# Copy built application and production dependencies
+COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+COPY --from=dependencies --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /app/package*.json ./
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/uploads /app/temp && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port
+EXPOSE 3004
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3004/api/health || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "dist/main.js"]
+
+# ===================================================================
+# STAGE 4: Development Stage (for development use)
+# ===================================================================
+FROM node:18-alpine AS development
+
+RUN apk add --no-cache dumb-init curl git
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source code
+COPY . .
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup && \
+    chown -R appuser:appgroup /app
+
+USER appuser
+
+EXPOSE 3004
+
+CMD ["npm", "run", "start:dev"]
+
+# ===================================================================
+# Build Arguments & Labels
+# ===================================================================
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL maintainer="VendorFlow Team" \
+      org.label-schema.build-date=$BUILD_DATE \
+      org.label-schema.version=$VERSION \
+      org.label-schema.vcs-ref=$VCS_REF \
+      org.label-schema.vcs-url="https://github.com/hassandevelops/VendorFlow" \
+      org.label-schema.name="VendorFlow Backend" \
+      org.label-schema.description="VendorFlow Backend API Service" \
+      org.label-schema.vendor="VendorFlow" \
+      org.label-schema.schema-version="1.0"
+
+# ===================================================================
+# Build Instructions:
+# ===================================================================
+# Production build:
+# docker build --target runtime -t vendorflow-backend:latest .
+#
+# Development build:
+# docker build --target development -t vendorflow-backend:dev .
+#
+# Build with arguments:
+# docker build \
+#   --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+#   --build-arg VERSION=2.0.0 \
+#   --build-arg VCS_REF=$(git rev-parse --short HEAD) \
+#   --target runtime \
+#   -t vendorflow-backend:2.0.0 .
+# =================================================================== 

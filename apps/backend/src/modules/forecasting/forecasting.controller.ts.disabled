@@ -1,0 +1,203 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+  Request,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
+import { ForecastingService } from './forecasting.service';
+import { CreateForecastDto } from './dto/create-forecast.dto';
+import { UpdateForecastDto } from './dto/update-forecast.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { TenantGuard } from '../auth/guards/tenant.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/schemas/user.schema';
+import { ForecastType, ForecastStatus } from './schemas/forecast.schema';
+
+@ApiTags('forecasting')
+@Controller('forecasting')
+@UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
+@ApiBearerAuth()
+export class ForecastingController {
+  constructor(private readonly forecastingService: ForecastingService) {}
+
+  @Post()
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Create a new forecast' })
+  @ApiResponse({ status: 201, description: 'Forecast created successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  create(@Body() createForecastDto: CreateForecastDto, @Request() req: any) {
+    // Temporarily use a default vendor ID when authentication is disabled
+    const vendorId = req.user?.id || '68b465b330450398483687bf'; // Default vendor ID for debugging
+    return this.forecastingService.create(createForecastDto, vendorId);
+  }
+
+  @Get()
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Get all forecasts with filtering' })
+  @ApiResponse({ status: 200, description: 'Forecasts retrieved successfully' })
+  @ApiQuery({
+    name: 'vendorId',
+    required: false,
+    description: 'Filter by vendor ID',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    enum: ForecastType,
+    description: 'Filter by forecast type',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ForecastStatus,
+    description: 'Filter by forecast status',
+  })
+  findAll(
+    @Query('vendorId') vendorId?: string,
+    @Query('type') type?: ForecastType,
+    @Query('status') status?: ForecastStatus,
+  ) {
+    return this.forecastingService.findAll(vendorId, type, status);
+  }
+
+  @Get('stats')
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Get forecasting statistics' })
+  @ApiResponse({
+    status: 200,
+    description: 'Statistics retrieved successfully',
+  })
+  @ApiQuery({
+    name: 'vendorId',
+    required: false,
+    description: 'Filter by vendor ID',
+  })
+  getStats(@Query('vendorId') vendorId?: string) {
+    return this.forecastingService.getForecastStats(vendorId);
+  }
+
+  @Get('cost-forecast')
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Generate cost forecast' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cost forecast generated successfully',
+  })
+  @ApiQuery({
+    name: 'forecastPeriod',
+    required: true,
+    description: 'Forecast period in days',
+  })
+  @ApiQuery({ name: 'model', required: false, description: 'ML model to use' })
+  @ApiQuery({
+    name: 'confidenceLevel',
+    required: false,
+    description: 'Confidence level percentage',
+  })
+  generateCostForecast(
+    @Request() req: any,
+    @Query('forecastPeriod') forecastPeriod: number,
+    @Query('model') model?: string,
+    @Query('confidenceLevel') confidenceLevel?: number,
+  ) {
+    return this.forecastingService.generateCostForecast(
+      req.user.id,
+      forecastPeriod,
+      model as any,
+      confidenceLevel,
+    );
+  }
+
+  @Get('inventory-forecast')
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Generate inventory forecast' })
+  @ApiResponse({
+    status: 200,
+    description: 'Inventory forecast generated successfully',
+  })
+  @ApiQuery({
+    name: 'forecastPeriod',
+    required: true,
+    description: 'Forecast period in days',
+  })
+  @ApiQuery({ name: 'model', required: false, description: 'ML model to use' })
+  @ApiQuery({
+    name: 'confidenceLevel',
+    required: false,
+    description: 'Confidence level percentage',
+  })
+  generateInventoryForecast(
+    @Request() req: any,
+    @Query('forecastPeriod') forecastPeriod: number,
+    @Query('model') model?: string,
+    @Query('confidenceLevel') confidenceLevel?: number,
+  ) {
+    return this.forecastingService.generateInventoryForecast(
+      req.user.id,
+      forecastPeriod,
+      model as any,
+      confidenceLevel,
+    );
+  }
+
+  @Get(':id')
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Get forecast by ID' })
+  @ApiResponse({ status: 200, description: 'Forecast retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Forecast not found' })
+  findOne(@Param('id') id: string) {
+    return this.forecastingService.findOne(id);
+  }
+
+  @Patch(':id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Update forecast' })
+  @ApiResponse({ status: 200, description: 'Forecast updated successfully' })
+  @ApiResponse({ status: 404, description: 'Forecast not found' })
+  update(
+    @Param('id') id: string,
+    @Body() updateForecastDto: UpdateForecastDto,
+  ) {
+    return this.forecastingService.update(id, updateForecastDto);
+  }
+
+  @Delete(':id')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Delete forecast' })
+  @ApiResponse({ status: 200, description: 'Forecast deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Forecast not found' })
+  remove(@Param('id') id: string) {
+    return this.forecastingService.remove(id);
+  }
+
+  @Post(':id/regenerate')
+  @Roles(UserRole.ADMIN,  UserRole.VENDOR)
+  @ApiOperation({ summary: 'Regenerate forecast' })
+  @ApiResponse({
+    status: 200,
+    description: 'Forecast regeneration triggered successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Forecast not found' })
+  async regenerateForecast(@Param('id') id: string) {
+    await this.forecastingService.findOne(id);
+
+    // Trigger regeneration by calling ML service
+    await this.forecastingService['triggerForecastGeneration'](id);
+
+    return { message: 'Forecast regeneration triggered successfully' };
+  }
+}

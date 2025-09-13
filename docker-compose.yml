@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  # MongoDB (Commented out - using MongoDB Atlas instead)
+  # mongodb:
+  #   image: mongo:7.0
+  #   container_name: vendor-mgmt-mongodb-new
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27019:27017"
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: admin
+  #     MONGO_INITDB_ROOT_PASSWORD: password123
+  #     MONGO_INITDB_DATABASE: vendor_management
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #     - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+  #   networks:
+  #     - vendor-network
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: vendor-mgmt-redis-new
+    restart: unless-stopped
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - vendor-network
+
+  # Backend API (NestJS)
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.dev
+    container_name: vendor-mgmt-backend-new
+    restart: unless-stopped
+    ports:
+      - "3004:3001"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      MONGODB_URI: mongodb+srv://fadoyintaiwo01:Pakistan123@cluster0.wkxj1sg.mongodb.net/vendor_management?retryWrites=true&w=majority&appName=Cluster0
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-jwt-secret-key
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # Stripe keys are loaded from .env file via env_file directive above
+      # Gmail SMTP Configuration
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      SMTP_GMAIL_USER: ${SMTP_GMAIL_USER}
+      SMTP_GMAIL_PASS: ${SMTP_GMAIL_PASS}
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - vendor-network
+
+  # ML Service (FastAPI)
+  ml-service:
+    build:
+      context: ./apps/ml-service
+      dockerfile: Dockerfile.dev
+    container_name: vendor-mgmt-ml-new
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    environment:
+      MONGODB_URI: mongodb+srv://fadoyintaiwo01:Pakistan123@cluster0.wkxj1sg.mongodb.net/vendor_management?retryWrites=true&w=majority&appName=Cluster0
+      REDIS_URL: redis://redis:6379
+      MODEL_PATH: /app/models
+      # AWS Configuration
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # AWS Forecast Configuration
+      AWS_FORECAST_ROLE_ARN: ${AWS_FORECAST_ROLE_ARN}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-vendorflow-forecast-data}
+      # Forecast Settings
+      FORECAST_AUTO_CLEANUP: ${FORECAST_AUTO_CLEANUP:-true}
+      FORECAST_MAX_CONCURRENT_JOBS: ${FORECAST_MAX_CONCURRENT_JOBS:-5}
+      FORECAST_MIN_DATA_POINTS: ${FORECAST_MIN_DATA_POINTS:-60}
+    volumes:
+      - ./apps/ml-service:/app
+      - ml_models:/app/models
+    depends_on:
+      - redis
+    networks:
+      - vendor-network
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile.dev
+    container_name: vendor-mgmt-frontend-new
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3004
+      NEXT_INTERNAL_API_URL: http://backend:3001
+      NEXT_PUBLIC_ML_URL: http://localhost:8002
+      NEXT_PUBLIC_COGNITO_REGION: us-east-1
+      NEXT_PUBLIC_COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID}
+      NEXT_PUBLIC_COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID}
+      # NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is loaded from .env file
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - vendor-network
+
+volumes:
+  # mongodb_data:  # Commented out - using MongoDB Atlas instead
+  redis_data:
+  ml_models:
+
+networks:
+  vendor-network:
+    driver: bridge

@@ -1,0 +1,147 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document, Types } from 'mongoose';
+
+export enum ForecastType {
+  COST = 'cost',
+  INVENTORY = 'inventory',
+  DEMAND = 'demand',
+  REVENUE = 'revenue',
+}
+
+export enum ForecastStatus {
+  PENDING = 'pending',
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  EXPIRED = 'expired',
+}
+
+export enum ForecastModel {
+  PROPHET = 'prophet',
+  XGBOOST = 'xgboost',
+  LINEAR_REGRESSION = 'linear_regression',
+  ARIMA = 'arima',
+  LSTM = 'lstm',
+  AWS_FORECAST = 'aws_forecast',
+  HYBRID = 'hybrid',
+  AUTO_SELECTED = 'auto_selected',
+}
+
+@Schema({ timestamps: true })
+export class Forecast extends Document {
+  @Prop({ required: true, type: Types.ObjectId, ref: 'Vendor' })
+  vendorId: Types.ObjectId;
+
+  @Prop({ required: true, enum: ForecastType })
+  type: ForecastType;
+
+  @Prop({
+    required: true,
+    enum: ForecastStatus,
+    default: ForecastStatus.PENDING,
+  })
+  status: ForecastStatus;
+
+  @Prop({ required: true, enum: ForecastModel })
+  forecastModel: ForecastModel;
+
+  @Prop({ required: true })
+  forecastPeriod: number; // in days
+
+  @Prop({ required: true })
+  startDate: Date;
+
+  @Prop({ required: true })
+  endDate: Date;
+
+  @Prop({ required: true, min: 0 })
+  confidenceLevel: number; // percentage
+
+  @Prop({ type: Object })
+  inputData: {
+    historicalData: any[];
+    parameters: Record<string, any>;
+    filters: Record<string, any>;
+  };
+
+  @Prop({ type: Object })
+  forecastResults: {
+    predictions: any[];
+    metrics: {
+      mae: number;
+      mse: number;
+      rmse: number;
+      mape: number;
+    };
+    confidenceIntervals: any[];
+    seasonality: any;
+    trends: any;
+  };
+
+  @Prop({ type: Object })
+  costForecast?: {
+    totalBudget: number;
+    categoryBreakdown: Record<string, number>;
+    growthRate: number;
+    seasonalFactors: Record<string, number>;
+    riskAssessment: {
+      highRiskItems: string[];
+      riskScore: number;
+      recommendations: string[];
+    };
+  };
+
+  @Prop({ type: Object })
+  inventoryForecast?: {
+    currentStock: Record<string, number>;
+    reorderLevels: Record<string, number>;
+    leadTimes: Record<string, number>;
+    predictedDemand: Record<string, number>;
+    stockoutDays: Record<string, number>;
+    reorderRecommendations: Array<{
+      itemId: string;
+      itemName: string;
+      currentStock: number;
+      reorderQuantity: number;
+      reorderDate: Date;
+      urgency: 'low' | 'medium' | 'high';
+    }>;
+    riskLevels: Record<string, 'low' | 'medium' | 'high'>;
+    dailyConsumption: Record<string, number>;
+  };
+
+  @Prop({ type: Object })
+  metadata: {
+    mlServiceVersion: string;
+    processingTime: number;
+    dataPoints: number;
+    lastTrainingDate?: Date;
+    modelAccuracy?: number;
+  };
+
+  @Prop()
+  notes?: string;
+
+  @Prop({ default: true })
+  isActive: boolean;
+
+  @Prop()
+  expiresAt?: Date;
+
+  @Prop({ type: [String] })
+  tags?: string[];
+}
+
+export const ForecastSchema = SchemaFactory.createForClass(Forecast);
+
+// Indexes for better query performance
+ForecastSchema.index({ vendorId: 1 });
+ForecastSchema.index({ type: 1 });
+ForecastSchema.index({ status: 1 });
+ForecastSchema.index({ model: 1 });
+ForecastSchema.index({ startDate: 1 });
+ForecastSchema.index({ endDate: 1 });
+ForecastSchema.index({ vendorId: 1, type: 1 });
+ForecastSchema.index({ vendorId: 1, status: 1 });
+ForecastSchema.index({ createdAt: -1 });
+ForecastSchema.index({ expiresAt: 1 });

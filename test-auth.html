@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VendorFlow Auth Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .form-group { margin: 20px 0; }
+        input, button { padding: 10px; margin: 5px 0; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; }
+        .error { background: #f8d7da; color: #721c24; }
+        .success { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <h1>VendorFlow Authentication Test</h1>
+    
+    <div class="form-group">
+        <h3>Login</h3>
+        <input type="email" id="email" placeholder="Email" value="admin@test.com">
+        <input type="password" id="password" placeholder="Password" value="AdminPass123!">
+        <button onclick="login()">Login</button>
+    </div>
+    
+    <div class="form-group">
+        <h3>Test API Calls</h3>
+        <button onclick="testOrders()">Get Orders</button>
+        <button onclick="testVendors()">Get Vendors</button>
+        <button onclick="testSuppliers()">Get Suppliers</button>
+        <button onclick="testInventory()">Get Inventory</button>
+    </div>
+    
+    <div class="form-group">
+        <button onclick="clearStorage()">Clear Storage</button>
+        <button onclick="showStorage()">Show Storage</button>
+    </div>
+    
+    <div id="result" class="result"></div>
+    
+    <script>
+        const API_BASE = 'http://localhost:3004/api';
+        
+        function log(message, isError = false) {
+            const result = document.getElementById('result');
+            result.className = `result ${isError ? 'error' : 'success'}`;
+            result.innerHTML = `<pre>${JSON.stringify(message, null, 2)}</pre>`;
+        }
+        
+        async function apiCall(endpoint, options = {}) {
+            const token = localStorage.getItem('authToken');
+            
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` })
+                }
+            };
+            
+            const finalOptions = {
+                ...defaultOptions,
+                ...options,
+                headers: {
+                    ...defaultOptions.headers,
+                    ...options.headers
+                }
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/${endpoint}`, finalOptions);
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${data.message || data.error || 'Unknown error'}`);
+                }
+                
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+        
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await apiCall('auth/login', {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password })
+                });
+                
+                // Store tokens
+                localStorage.setItem('authToken', response.access_token);
+                localStorage.setItem('tokenExpiry', (Date.now() + response.expires_in * 1000).toString());
+                localStorage.setItem('userData', JSON.stringify(response.user));
+                
+                log({
+                    message: 'Login successful!',
+                    user: response.user,
+                    tokenExpiry: new Date(Date.now() + response.expires_in * 1000).toISOString()
+                });
+            } catch (error) {
+                log({ error: error.message }, true);
+            }
+        }
+        
+        async function testOrders() {
+            try {
+                const data = await apiCall('orders');
+                log({ endpoint: 'orders', data });
+            } catch (error) {
+                log({ endpoint: 'orders', error: error.message }, true);
+            }
+        }
+        
+        async function testVendors() {
+            try {
+                const data = await apiCall('vendors');
+                log({ endpoint: 'vendors', data });
+            } catch (error) {
+                log({ endpoint: 'vendors', error: error.message }, true);
+            }
+        }
+        
+        async function testSuppliers() {
+            try {
+                const data = await apiCall('suppliers');
+                log({ endpoint: 'suppliers', data });
+            } catch (error) {
+                log({ endpoint: 'suppliers', error: error.message }, true);
+            }
+        }
+        
+        async function testInventory() {
+            try {
+                const data = await apiCall('inventory');
+                log({ endpoint: 'inventory', data });
+            } catch (error) {
+                log({ endpoint: 'inventory', error: error.message }, true);
+            }
+        }
+        
+        function clearStorage() {
+            localStorage.clear();
+            log({ message: 'Storage cleared' });
+        }
+        
+        function showStorage() {
+            const storage = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                storage[key] = localStorage.getItem(key);
+            }
+            log({ storage });
+        }
+        
+        // Check initial state
+        window.onload = function() {
+            const token = localStorage.getItem('authToken');
+            const userData = localStorage.getItem('userData');
+            
+            if (token && userData) {
+                log({
+                    message: 'Found existing auth data',
+                    user: JSON.parse(userData),
+                    tokenExpiry: localStorage.getItem('tokenExpiry')
+                });
+            } else {
+                log({ message: 'No auth data found' });
+            }
+        };
+    </script>
+</body>
+</html> 

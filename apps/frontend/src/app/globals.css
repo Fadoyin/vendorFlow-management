@@ -1,0 +1,371 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS Variables for consistent theming */
+:root {
+  --revtrack-primary: #2563eb;
+  --revtrack-secondary: #7c3aed;
+  --revtrack-background: #f8fafc;
+  --revtrack-surface: #ffffff;
+  --revtrack-text: #1f2937;
+  --revtrack-text-muted: #6b7280;
+  --revtrack-border: #e5e7eb;
+  --revtrack-success: #10b981;
+  --revtrack-warning: #f59e0b;
+  --revtrack-error: #ef4444;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  /* Android-specific fixes */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  /* Prevent bounce scrolling on Android */
+  overscroll-behavior: contain;
+}
+
+/* Android-specific fixes for mobile sidebar */
+@media screen and (max-width: 1023px) {
+  .mobile-sidebar-fix {
+    /* Force hardware acceleration */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Smooth scrolling */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent text selection issues */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Remove tap highlights */
+    -webkit-tap-highlight-color: transparent;
+    /* Prevent zoom on input focus */
+    -webkit-text-size-adjust: 100%;
+  }
+  
+  .mobile-sidebar-backdrop {
+    /* Ensure backdrop works on Android */
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 40;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .mobile-sidebar-container {
+    /* Better positioning for Android */
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    background-color: white;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    /* Hardware acceleration */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Smooth transitions */
+    -webkit-transition: -webkit-transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .mobile-sidebar-open {
+    -webkit-transform: translateX(0) translateZ(0);
+    transform: translateX(0) translateZ(0);
+  }
+  
+  .mobile-sidebar-closed {
+    -webkit-transform: translateX(-100%) translateZ(0);
+    transform: translateX(-100%) translateZ(0);
+  }
+}
+
+body {
+  line-height: 1.6;
+  color: var(--revtrack-text);
+  background-color: var(--revtrack-background);
+}
+
+/* Dashboard Layout Fixes */
+@layer components {
+  
+  /* Fix for pages using manual layout structure */
+  .min-h-screen.bg-gray-50:has(.dashboard-main-override),
+  .min-h-screen.bg-gray-100:has(.dashboard-main-override) {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Ensure proper flex container for manual layouts */
+  .min-h-screen:has(.dashboard-main-override) > .flex:not(.items-center) {
+    flex: 1;
+    display: flex;
+    padding-top: 4rem; /* Account for fixed header */
+  }
+  
+  /* Ensure main content areas account for sidebar properly */
+  .dashboard-main {
+    @apply flex-1 min-w-0 overflow-auto;
+    /* Remove any fixed padding-left as flexbox handles spacing */
+    padding-left: 0 !important;
+  }
+  
+  /* Override any lg:pl-72 or lg:pl-64 classes in dashboard pages */
+  .dashboard-content {
+    @apply flex-1 min-w-0 overflow-auto !important;
+    /* Ensure content doesn't have unnecessary left padding */
+    padding-left: 0 !important;
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+  }
+  
+  /* Ensure content starts at the top for dashboard-content */
+  .dashboard-content > div:first-child {
+    padding-top: 1.5rem !important; /* 24px top padding instead of pt-16 */
+  }
+  
+  /* Fix main content positioning for manual layouts */
+  .dashboard-main-override {
+    @apply flex-1 min-w-0 overflow-auto !important;
+    /* Remove problematic padding and positioning */
+    padding-left: 0 !important;
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+  }
+  
+  /* Ensure content starts at the top */
+  .dashboard-main-override > div:first-child {
+    padding-top: 1.5rem !important; /* 24px top padding instead of pt-16 */
+  }
+  
+  /* Fix header positioning to account for sidebar */
+  .dashboard-header {
+    @apply fixed top-0 left-0 right-0 z-50;
+    /* Header spans full width, sidebar will be positioned relative to it */
+  }
+  
+  /* Sidebar positioning fixes */
+  .dashboard-sidebar {
+    /* On desktop: relative positioning for proper flex behavior */
+    @apply lg:relative lg:flex-shrink-0;
+    /* On mobile: fixed positioning for overlay */
+    @apply fixed lg:static;
+  }
+  
+  /* Container for sidebar + main content */
+  .dashboard-container {
+    @apply flex h-screen;
+    /* Account for fixed header */
+    padding-top: 4rem; /* 64px header height */
+  }
+  
+  /* Fix for pages with overflow issues */
+  .overflow-x-hidden {
+    overflow-x: hidden !important;
+  }
+}
+
+@layer utilities {
+  /* Override utility classes that cause layout issues */
+  .lg\:pl-72,
+  .lg\:pl-64,
+  .lg\:pl-20 {
+    /* Remove left padding on large screens when using flexbox layout */
+    @apply lg:pl-0 !important;
+  }
+  
+  /* Fix pt-16 issues in main content */
+  .dashboard-main-override.pt-16 {
+    padding-top: 0 !important;
+  }
+  
+  /* Ensure main content areas are properly sized */
+  .dashboard-main-override {
+    @apply flex-1 min-w-0 overflow-auto !important;
+    padding-left: 0 !important;
+  }
+  
+  /* Fix min-h-screen on main elements */
+  main.min-h-screen {
+    min-height: calc(100vh - 4rem) !important; /* Account for header */
+  }
+}
+
+/* Component Styles */
+@layer components {
+  
+  /* Form Input Styles */
+  .revtrack-input {
+    @apply w-full px-4 py-3 border border-gray-300 rounded-xl bg-white text-gray-900 placeholder-gray-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-revtrack-primary focus:border-transparent hover:border-gray-400;
+  }
+  
+  .revtrack-input:focus {
+    @apply shadow-lg shadow-revtrack-primary/10;
+  }
+  
+  /* Button Styles */
+  .revtrack-button {
+    @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .revtrack-button-primary {
+    @apply revtrack-button bg-gradient-to-r from-revtrack-primary to-revtrack-secondary text-white hover:from-blue-700 hover:to-purple-800 focus:ring-revtrack-primary shadow-lg shadow-revtrack-primary/25;
+    transform: translateY(0);
+  }
+  
+  .revtrack-button-primary:hover {
+    transform: translateY(-1px);
+    @apply shadow-xl shadow-revtrack-primary/30;
+  }
+  
+  .revtrack-button-secondary {
+    @apply revtrack-button bg-white text-revtrack-primary border-gray-300 hover:bg-gray-50 focus:ring-revtrack-primary;
+  }
+  
+  /* Card Styles */
+  .revtrack-card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6 transition-all duration-200 hover:shadow-md;
+  }
+  
+  /* Auth Card */
+  .auth-card {
+    @apply bg-white rounded-2xl shadow-xl border border-gray-100 p-8 w-full max-w-md mx-auto;
+  }
+  
+  /* Navigation Item */
+  .nav-item {
+    @apply relative flex items-center px-3 py-3 rounded-xl transition-all duration-200;
+    /* Use transform instead of hover:scale-[1.02] */
+  }
+  
+  .nav-item:hover {
+    transform: scale(1.02);
+  }
+  
+  /* Search Input */
+  .search-input {
+    @apply block w-full pl-10 pr-16 py-3 border rounded-xl bg-gray-50 text-gray-900 placeholder-gray-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:bg-white border-gray-200;
+  }
+  
+  .search-input:hover {
+    @apply border-gray-300 bg-white;
+  }
+  
+  .search-input:focus {
+    @apply ring-revtrack-primary border-transparent;
+  }
+}
+
+/* Utility Classes */
+@layer utilities {
+  
+  /* Hover Effects */
+  .hover-scale-sm {
+    @apply transition-transform duration-300;
+    /* Use transform instead of hover:scale-102 */
+  }
+  
+  .hover-scale-sm:hover {
+    transform: scale(1.02);
+  }
+  
+  .hover-scale-md:hover {
+    transform: scale(1.05);
+  }
+  
+  /* Gradient Text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-revtrack-primary to-revtrack-secondary bg-clip-text text-transparent;
+  }
+  
+  /* Glass Effect */
+  .glass-effect {
+    @apply backdrop-blur-sm bg-white/80 border border-white/20;
+  }
+  
+  /* Animation Classes */
+  .fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .slide-in-up {
+    animation: slideInUp 0.6s ease-out;
+  }
+  
+  .slide-in-right {
+    animation: slideInRight 0.5s ease-out;
+  }
+  
+  /* Focus Styles */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-revtrack-primary focus:ring-offset-2;
+  }
+  
+  /* Text Styles */
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive Design Helpers */
+@media (max-width: 768px) {
+  .auth-card {
+    @apply p-6 mx-4;
+  }
+  
+  .revtrack-button {
+    @apply px-4 py-2 text-sm;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

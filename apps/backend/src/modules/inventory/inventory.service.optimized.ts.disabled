@@ -1,0 +1,477 @@
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { BaseService } from '../../common/database/base.service';
+import { QueryBuilderService } from '../../common/database/query-builder.service';
+import { CacheService } from '../../common/database/cache.service';
+import { Item } from '../../common/schemas/item.schema';
+import { CreateItemDto } from './dto/create-item.dto';
+import { UpdateItemDto } from './dto/update-item.dto';
+
+export interface InventoryQueryParams {
+  search?: string;
+  category?: string;
+  status?: string;
+  lowStock?: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+  supplierId?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface InventoryStats {
+  totalItems: number;
+  activeItems: number;
+  lowStockItems: number;
+  outOfStockItems: number;
+  totalValue: number;
+  averageValue: number;
+  topCategories: Array<{ category: string; count: number; value: number }>;
+  stockDistribution: Array<{ range: string; count: number }>;
+}
+
+@Injectable()
+export class InventoryServiceOptimized extends BaseService<Item> {
+  constructor(
+    @InjectModel(Item.name) itemModel: Model<Item>,
+    queryBuilder: QueryBuilderService,
+    cache: CacheService,
+  ) {
+    super(itemModel, queryBuilder, cache, 'inventory');
+  }
+
+  /**
+   * Create inventory item with business logic
+   */
+  async createItem(
+    createItemDto: CreateItemDto,
+    tenantId: string,
+    userId: string,
+  ): Promise<Item> {
+    try {
+      // Generate SKU if not provided
+      if (!createItemDto.sku) {
+        createItemDto.sku = await this.generateSKU(createItemDto.category, tenantId);
+      }
+
+      // Calculate total value
+      const totalValue = this.calculateTotalValue(
+        createItemDto.inventory?.currentStock || 0,
+        createItemDto.pricing?.costPrice || 0,
+      );
+
+      const itemData = {
+        ...createItemDto,
+        totalValue,
+        createdBy: userId,
+        updatedBy: userId,
+      };
+
+      const item = await this.create(itemData, tenantId);
+
+      // Clear related caches
+      await this.clearInventoryCaches(tenantId);
+
+      this.logger.log(`Created inventory item: ${item.sku}`, { 
+        itemId: item._id, 
+        tenantId,
+        userId 
+      });
+
+      return item;
+    } catch (error) {
+      this.logger.error(`Error creating inventory item: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Find all inventory items with advanced filtering
+   */
+  async findAllItems(
+    tenantId: string,
+    queryParams: InventoryQueryParams = {},
+  ) {
+    try {
+      const {
+        search,
+        category,
+        status,
+        lowStock,
+        minPrice,
+        maxPrice,
+        supplierId,
+        sortBy = 'updatedAt',
+        sortOrder = 'desc',
+        ...paginationParams
+      } = queryParams;
+
+      // Build advanced filter
+      let filter: any = {};
+
+      // Search across multiple fields
+      if (search) {
+        filter = {
+          ...filter,
+          ...this.queryBuilder.buildSearchFilter(search, [
+            'name',
+            'sku',
+            'description',
+            'category',
+          ]),
+        };
+      }
+
+      // Category filter
+      if (category) {
+        filter.category = category;
+      }
+
+      // Status filter
+      if (status) {
+        filter.status = status;
+      }
+
+      // Low stock filter
+      if (lowStock) {
+        filter.$expr = {
+          $lte: ['$inventory.currentStock', '$inventory.reorderPoint'],
+        };
+      }
+
+      // Price range filter
+      if (minPrice || maxPrice) {
+        filter['pricing.costPrice'] = {};
+        if (minPrice) filter['pricing.costPrice'].$gte = minPrice;
+        if (maxPrice) filter['pricing.costPrice'].$lte = maxPrice;
+      }
+
+      // Supplier filter
+      if (supplierId) {
+        filter.primarySupplier = new Types.ObjectId(supplierId);
+      }
+
+      // Sort configuration
+      const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+      // Execute optimized query
+      const result = await this.findAll(filter, {
+        ...paginationParams,
+        sort,
+        select: [
+          'name',
+          'sku',
+          'category',
+          'pricing',
+          'inventory',
+          'status',
+          'totalValue',
+          'updatedAt',
+        ].join(' '),
+        populate: 'primarySupplier',
+        cache: true,
+        cacheTTL: 300, // 5 minutes
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error(`Error finding inventory items: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Update inventory stock with validation
+   */
+  async updateStock(
+    itemId: string,
+    quantity: number,
+    operation: 'add' | 'subtract' | 'set',
+    tenantId: string,
+    userId: string,
+    reason?: string,
+  ): Promise<Item> {
+    try {
+      const item = await this.findById(itemId, tenantId, { cache: false });
+
+      let newStock: number;
+      const currentStock = item.inventory?.currentStock || 0;
+
+      switch (operation) {
+        case 'add':
+          newStock = currentStock + quantity;
+          break;
+        case 'subtract':
+          newStock = Math.max(0, currentStock - quantity);
+          break;
+        case 'set':
+          newStock = Math.max(0, quantity);
+          break;
+        default:
+          throw new BadRequestException('Invalid stock operation');
+      }
+
+      // Calculate new total value
+      const totalValue = this.calculateTotalValue(
+        newStock,
+        item.pricing?.costPrice || 0,
+      );
+
+      const updateData = {
+        'inventory.currentStock': newStock,
+        totalValue,
+        updatedBy: userId,
+        'inventory.lastUpdated': new Date(),
+      };
+
+      const updated = await this.update(itemId, updateData, tenantId);
+
+      // Log stock movement
+      await this.logStockMovement(itemId, {
+        previousStock: currentStock,
+        newStock,
+        quantity,
+        operation,
+        reason,
+        userId,
+        tenantId,
+      });
+
+      // Check for low stock alerts
+      if (newStock <= (item.inventory?.reorderPoint || 0)) {
+        await this.triggerLowStockAlert(updated, tenantId);
+      }
+
+      this.logger.log(`Updated stock for item ${item.sku}: ${currentStock} → ${newStock}`);
+
+      return updated;
+    } catch (error) {
+      this.logger.error(`Error updating stock: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get comprehensive inventory statistics
+   */
+  async getInventoryStats(tenantId: string): Promise<InventoryStats> {
+    try {
+      const cacheKey = this.generateCacheKey('inventoryStats', { tenantId });
+
+      return await this.cache.wrap(
+        cacheKey,
+        async () => {
+          const pipeline = [
+            { $match: this.buildBaseFilter({}, true, tenantId) },
+            {
+              $group: {
+                _id: null,
+                totalItems: { $sum: 1 },
+                activeItems: {
+                  $sum: { $cond: [{ $ne: ['$status', 'inactive'] }, 1, 0] },
+                },
+                lowStockItems: {
+                  $sum: {
+                    $cond: [
+                      { $lte: ['$inventory.currentStock', '$inventory.reorderPoint'] },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+                outOfStockItems: {
+                  $sum: { $cond: [{ $eq: ['$inventory.currentStock', 0] }, 1, 0] },
+                },
+                totalValue: { $sum: '$totalValue' },
+                averageValue: { $avg: '$totalValue' },
+              },
+            },
+          ];
+
+          const categoryPipeline = [
+            { $match: this.buildBaseFilter({}, true, tenantId) },
+            {
+              $group: {
+                _id: '$category',
+                count: { $sum: 1 },
+                value: { $sum: '$totalValue' },
+              },
+            },
+            { $sort: { count: -1 } },
+            { $limit: 10 },
+            {
+              $project: {
+                category: '$_id',
+                count: 1,
+                value: 1,
+                _id: 0,
+              },
+            },
+          ];
+
+          const stockDistributionPipeline = [
+            { $match: this.buildBaseFilter({}, true, tenantId) },
+            {
+              $bucket: {
+                groupBy: '$inventory.currentStock',
+                boundaries: [0, 1, 10, 50, 100, 500, Infinity],
+                default: 'Other',
+                output: { count: { $sum: 1 } },
+              },
+            },
+            {
+              $project: {
+                range: {
+                  $switch: {
+                    branches: [
+                      { case: { $eq: ['$_id', 0] }, then: 'Out of Stock' },
+                      { case: { $eq: ['$_id', 1] }, then: '1-9 items' },
+                      { case: { $eq: ['$_id', 10] }, then: '10-49 items' },
+                      { case: { $eq: ['$_id', 50] }, then: '50-99 items' },
+                      { case: { $eq: ['$_id', 100] }, then: '100-499 items' },
+                      { case: { $eq: ['$_id', 500] }, then: '500+ items' },
+                    ],
+                    default: 'Other',
+                  },
+                },
+                count: 1,
+                _id: 0,
+              },
+            },
+          ];
+
+          const [stats, topCategories, stockDistribution] = await Promise.all([
+            this.queryBuilder.aggregate(this.model, pipeline),
+            this.queryBuilder.aggregate(this.model, categoryPipeline),
+            this.queryBuilder.aggregate(this.model, stockDistributionPipeline),
+          ]);
+
+          const baseStats = stats[0] || {
+            totalItems: 0,
+            activeItems: 0,
+            lowStockItems: 0,
+            outOfStockItems: 0,
+            totalValue: 0,
+            averageValue: 0,
+          };
+
+          return {
+            ...baseStats,
+            topCategories,
+            stockDistribution,
+          };
+        },
+        { namespace: this.cacheNamespace, ttl: 300 }
+      );
+    } catch (error) {
+      this.logger.error(`Error getting inventory stats: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate unique SKU
+   */
+  private async generateSKU(category: string, tenantId: string): Promise<string> {
+    const prefix = category.substring(0, 3).toUpperCase();
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.random().toString(36).substring(2, 4).toUpperCase();
+    
+    return `${prefix}-${timestamp}-${random}`;
+  }
+
+  /**
+   * Calculate total inventory value
+   */
+  private calculateTotalValue(currentStock: number, costPrice: number): number {
+    return Number((currentStock * costPrice).toFixed(2));
+  }
+
+  /**
+   * Log stock movement for audit trail
+   */
+  private async logStockMovement(itemId: string, movement: any): Promise<void> {
+    try {
+      // This would integrate with an audit log service
+      this.logger.log('Stock movement recorded', {
+        itemId,
+        movement,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to log stock movement: ${error.message}`);
+    }
+  }
+
+  /**
+   * Trigger low stock alert
+   */
+  private async triggerLowStockAlert(item: Item, tenantId: string): Promise<void> {
+    try {
+      // This would integrate with notification service
+      this.logger.warn(`Low stock alert for item: ${item.sku}`, {
+        itemId: item._id,
+        currentStock: item.inventory?.currentStock,
+        reorderPoint: item.inventory?.reorderPoint,
+        tenantId,
+      });
+    } catch (error) {
+      this.logger.warn(`Failed to trigger low stock alert: ${error.message}`);
+    }
+  }
+
+  /**
+   * Clear inventory-related caches
+   */
+  private async clearInventoryCaches(tenantId: string): Promise<void> {
+    await Promise.all([
+      this.clearEntityCache(tenantId),
+      this.cache.deletePattern('inventoryStats:*', { namespace: this.cacheNamespace }),
+    ]);
+  }
+
+  /**
+   * Validation hooks
+   */
+  protected async validateCreate(data: Partial<Item>): Promise<void> {
+    if (!data.name) {
+      throw new BadRequestException('Item name is required');
+    }
+
+    if (!data.category) {
+      throw new BadRequestException('Item category is required');
+    }
+
+    // Check for duplicate SKU if provided
+    if (data.sku) {
+      const existing = await this.model.findOne({
+        sku: data.sku,
+        tenantId: data.tenantId,
+        isDeleted: { $ne: true },
+      }).lean();
+
+      if (existing) {
+        throw new BadRequestException('SKU already exists');
+      }
+    }
+  }
+
+  protected async validateUpdate(
+    id: string,
+    data: any,
+    tenantId?: string,
+  ): Promise<void> {
+    // Validate stock updates
+    if (data['inventory.currentStock'] !== undefined && data['inventory.currentStock'] < 0) {
+      throw new BadRequestException('Stock cannot be negative');
+    }
+
+    // Validate pricing updates
+    if (data['pricing.costPrice'] !== undefined && data['pricing.costPrice'] < 0) {
+      throw new BadRequestException('Cost price cannot be negative');
+    }
+  }
+} 

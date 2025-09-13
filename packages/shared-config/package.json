@@ -1,0 +1,19 @@
+{
+  "name": "@vendorflow/shared-config",
+  "version": "1.0.0",
+  "description": "Shared configuration for VendorFlow monorepo",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+} 

@@ -1,0 +1,59 @@
+{
+  "name": "cloud-vendor-management",
+  "version": "1.0.0",
+  "description": "Cloud-based SaaS platform for vendor management, inventory tracking, and ML forecasting",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:frontend": "turbo run dev --filter=frontend",
+    "dev:backend": "turbo run dev --filter=backend",
+    "dev:ml": "turbo run dev --filter=ml-service",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:all": "turbo run test:all",
+    "test:frontend": "turbo run test --filter=frontend",
+    "test:backend": "turbo run test --filter=backend",
+    "test:ml": "turbo run test --filter=ml-service",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean",
+    "docker:build": "turbo run docker:build",
+    "docker:push": "turbo run docker:push",
+    "deploy:all": "turbo run deploy",
+    "deploy:frontend": "turbo run deploy --filter=frontend",
+    "deploy:backend": "turbo run deploy --filter=backend",
+    "deploy:ml": "turbo run deploy --filter=ml-service",
+    "db:seed": "cd apps/backend && npm run db:seed",
+    "db:migrate": "cd apps/backend && npm run db:migrate"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^1.10.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "vendor-management",
+    "inventory-tracking",
+    "machine-learning",
+    "saas",
+    "nextjs",
+    "nestjs",
+    "fastapi",
+    "mongodb",
+    "aws"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.1"
+  }
+}

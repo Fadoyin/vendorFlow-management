@@ -1,0 +1,166 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+  BadRequestException,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { TwoFactorService } from '../services/two-factor.service';
+
+class Setup2FADto {
+  secret: string;
+  token: string;
+  backupCodes: string[];
+}
+
+class Verify2FADto {
+  token?: string;
+  backupCode?: string;
+  emailOTP?: string;
+}
+
+class Disable2FADto {
+  password: string;
+}
+
+class RegenerateBackupCodesDto {
+  password: string;
+}
+
+@ApiTags('two-factor-auth')
+@ApiBearerAuth()
+@Controller('auth/2fa')
+@UseGuards(JwtAuthGuard)
+export class TwoFactorController {
+  constructor(private readonly twoFactorService: TwoFactorService) {}
+
+  @Get('setup')
+  @ApiOperation({ summary: 'Generate 2FA setup data (QR code and backup codes)' })
+  @ApiResponse({ status: 200, description: '2FA setup data generated successfully' })
+  async setup(@Request() req: any) {
+    const setupData = await this.twoFactorService.generateTOTPSetup(
+      req.user.id,
+      req.user.email
+    );
+    
+    return {
+      success: true,
+      data: setupData,
+    };
+  }
+
+  @Post('enable')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enable 2FA with TOTP verification' })
+  @ApiResponse({ status: 200, description: '2FA enabled successfully' })
+  @ApiBody({ type: Setup2FADto })
+  async enable(@Body() setupDto: Setup2FADto, @Request() req: any) {
+    await this.twoFactorService.enable2FA(
+      req.user.id,
+      setupDto.secret,
+      setupDto.token,
+      setupDto.backupCodes
+    );
+    
+    return {
+      success: true,
+      message: '2FA enabled successfully',
+    };
+  }
+
+  @Post('disable')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable 2FA with password verification' })
+  @ApiResponse({ status: 200, description: '2FA disabled successfully' })
+  @ApiBody({ type: Disable2FADto })
+  async disable(@Body() disableDto: Disable2FADto, @Request() req: any) {
+    await this.twoFactorService.disable2FA(req.user.id, disableDto.password);
+    
+    return {
+      success: true,
+      message: '2FA disabled successfully',
+    };
+  }
+
+  @Post('verify')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify 2FA token, backup code, or email OTP' })
+  @ApiResponse({ status: 200, description: '2FA verification successful' })
+  @ApiBody({ type: Verify2FADto })
+  async verify(@Body() verifyDto: Verify2FADto, @Request() req: any) {
+    let isValid = false;
+
+    // Try TOTP token first
+    if (verifyDto.token) {
+      isValid = await this.twoFactorService.verifyTOTP(req.user.id, verifyDto.token);
+    }
+    
+    // Try backup code if TOTP failed
+    if (!isValid && verifyDto.backupCode) {
+      isValid = await this.twoFactorService.verifyBackupCode(req.user.id, verifyDto.backupCode);
+    }
+    
+    // Try email OTP if others failed
+    if (!isValid && verifyDto.emailOTP) {
+      isValid = await this.twoFactorService.verifyEmailOTP(req.user.id, verifyDto.emailOTP);
+    }
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid 2FA code');
+    }
+
+    return {
+      success: true,
+      message: '2FA verification successful',
+    };
+  }
+
+  @Post('send-email-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send email OTP as fallback' })
+  @ApiResponse({ status: 200, description: 'Email OTP sent successfully' })
+  async sendEmailOTP(@Request() req: any) {
+    await this.twoFactorService.generateEmailOTP(req.user.id, req.user.email);
+    
+    return {
+      success: true,
+      message: 'Email OTP sent successfully',
+    };
+  }
+
+  @Get('status')
+  @ApiOperation({ summary: 'Get 2FA status for current user' })
+  @ApiResponse({ status: 200, description: '2FA status retrieved successfully' })
+  async getStatus(@Request() req: any) {
+    const status = await this.twoFactorService.get2FAStatus(req.user.id);
+    
+    return {
+      success: true,
+      data: status,
+    };
+  }
+
+  @Post('regenerate-backup-codes')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Regenerate backup codes' })
+  @ApiResponse({ status: 200, description: 'Backup codes regenerated successfully' })
+  @ApiBody({ type: RegenerateBackupCodesDto })
+  async regenerateBackupCodes(@Body() regenerateDto: RegenerateBackupCodesDto, @Request() req: any) {
+    const backupCodes = await this.twoFactorService.regenerateBackupCodes(
+      req.user.id,
+      regenerateDto.password
+    );
+    
+    return {
+      success: true,
+      data: { backupCodes },
+      message: 'Backup codes regenerated successfully',
+    };
+  }
+} 

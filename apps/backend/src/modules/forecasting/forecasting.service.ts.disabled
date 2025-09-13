@@ -1,0 +1,504 @@
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { Forecast } from './schemas/forecast.schema';
+import { Item } from '@/common/schemas/item.schema';
+import { Order } from '@/common/schemas/order.schema';
+import { firstValueFrom } from 'rxjs';
+
+@Injectable()
+export class ForecastingService {
+  private readonly logger = new Logger(ForecastingService.name);
+  private readonly mlServiceUrl: string;
+
+  constructor(
+    @InjectModel(Forecast.name) private readonly forecastModel: Model<Forecast>,
+    @InjectModel(Item.name) private readonly itemModel: Model<Item>,
+    @InjectModel(Order.name) private readonly orderModel: Model<Order>,
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.mlServiceUrl = this.configService.get<string>('ML_SERVICE_URL') || 'http://ml-service:8000';
+  }
+
+  /**
+   * Generate forecast for inventory demand using AWS Forecast
+   */
+  async generateInventoryForecast(
+    tenantId: string,
+    userId: string,
+    userRole: string,
+    itemId: string,
+    forecastHorizon: number = 30,
+    method?: string,
+  ): Promise<any> {
+    try {
+      this.logger.log(`Generating inventory forecast for item ${itemId}, tenant ${tenantId}`);
+
+      // Get historical data for the item
+      const historicalData = await this.getHistoricalInventoryData(tenantId, itemId, userRole, userId);
+
+      if (historicalData.length === 0) {
+        throw new BadRequestException('Insufficient historical data for forecasting');
+      }
+
+      // Call ML service for AWS Forecast
+      const forecastRequest = {
+        item_id: itemId,
+        historical_data: historicalData,
+        forecast_horizon: forecastHorizon,
+        method: method || 'auto'
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.mlServiceUrl}/api/v1/forecasts/generate`, forecastRequest)
+      );
+
+      const forecastResult = response.data;
+
+      // Store forecast results in database
+      const forecast = new this.forecastModel({
+        tenantId: new Types.ObjectId(tenantId),
+        userId: new Types.ObjectId(userId),
+        itemId: new Types.ObjectId(itemId),
+        type: 'inventory_demand',
+        forecastModel: forecastResult.method,
+        forecastHorizon,
+        predictions: forecastResult.predictions,
+        accuracy: forecastResult.accuracy,
+        confidenceLevel: forecastResult.confidence_level,
+        status: 'completed',
+        metadata: {
+          processingTime: forecastResult.processing_time,
+          dataPoints: historicalData.length,
+          method: forecastResult.method,
+          awsForecastArn: forecastResult.forecast_arn
+        }
+      });
+
+      await forecast.save();
+
+      this.logger.log(`Forecast generated and saved with ID: ${forecast._id}`);
+
+      return {
+        forecastId: forecast._id,
+        method: forecastResult.method,
+        forecastHorizon,
+        predictions: forecastResult.predictions,
+        accuracy: forecastResult.accuracy,
+        confidenceLevel: forecastResult.confidence_level,
+        metadata: forecast.metadata
+      };
+
+    } catch (error) {
+      this.logger.error(`Error generating inventory forecast: ${error.message}`);
+      throw new BadRequestException('Failed to generate inventory forecast');
+    }
+  }
+
+  /**
+   * Generate cost forecast using AWS Forecast
+   */
+  async generateCostForecast(
+    tenantId: string,
+    userId: string,
+    userRole: string,
+    forecastHorizon: number = 30,
+  ): Promise<any> {
+    try {
+      this.logger.log(`Generating cost forecast for tenant ${tenantId}`);
+
+      // Get historical cost data
+      const historicalCostData = await this.getHistoricalCostData(tenantId, userRole, userId);
+
+      if (historicalCostData.length === 0) {
+        throw new BadRequestException('Insufficient historical cost data for forecasting');
+      }
+
+      // Call ML service for cost forecasting
+      const forecastRequest = {
+        tenant_id: tenantId,
+        historical_data: historicalCostData,
+        forecast_horizon: forecastHorizon,
+        forecast_type: 'cost_trends'
+      };
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.mlServiceUrl}/api/v1/costs/forecast`, forecastRequest)
+      );
+
+      const forecastResult = response.data;
+
+      // Store forecast results in database
+      const forecast = new this.forecastModel({
+        tenantId: new Types.ObjectId(tenantId),
+        userId: new Types.ObjectId(userId),
+        type: 'cost_trends',
+        forecastModel: forecastResult.method,
+        forecastHorizon,
+        predictions: forecastResult.predictions,
+        accuracy: forecastResult.accuracy,
+        confidenceLevel: forecastResult.confidence_level,
+        status: 'completed',
+        metadata: {
+          processingTime: forecastResult.processing_time,
+          dataPoints: historicalCostData.length,
+          method: forecastResult.method
+        }
+      });
+
+      await forecast.save();
+
+      return {
+        forecastId: forecast._id,
+        method: forecastResult.method,
+        forecastHorizon,
+        predictions: forecastResult.predictions,
+        accuracy: forecastResult.accuracy,
+        confidenceLevel: forecastResult.confidence_level
+      };
+
+    } catch (error) {
+      this.logger.error(`Error generating cost forecast: ${error.message}`);
+      throw new BadRequestException('Failed to generate cost forecast');
+    }
+  }
+
+  /**
+   * Get forecast predictions for inventory
+   */
+  async getInventoryForecasts(
+    tenantId: string,
+    userId: string,
+    userRole: string,
+    itemId?: string,
+    days: number = 30,
+  ): Promise<any> {
+    try {
+      const filter: any = {
+        tenantId: new Types.ObjectId(tenantId),
+        type: 'inventory_demand',
+        status: 'completed'
+      };
+
+      if (itemId) {
+        filter.itemId = new Types.ObjectId(itemId);
+      }
+
+      // Role-based filtering
+      if (userRole === 'vendor') {
+        filter.userId = new Types.ObjectId(userId);
+      } else if (userRole === 'supplier') {
+        // Suppliers can see forecasts for items they supply
+        const supplierItems = await this.itemModel.find({
+          tenantId: new Types.ObjectId(tenantId),
+          'suppliers.supplierId': new Types.ObjectId(userId)
+        }).select('_id');
+        
+        filter.itemId = { $in: supplierItems.map(item => item._id) };
+      }
+
+      const forecasts = await this.forecastModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .populate('itemId', 'name sku category')
+        .limit(50)
+        .lean();
+
+      // Process predictions for the requested time horizon
+      const processedForecasts = forecasts.map(forecast => {
+        const relevantPredictions = forecast.predictions.slice(0, days);
+        return {
+          forecastId: forecast._id,
+          item: forecast.itemId,
+          method: forecast.forecastModel,
+          accuracy: forecast.accuracy,
+          confidenceLevel: forecast.confidenceLevel,
+          predictions: relevantPredictions,
+          createdAt: forecast.createdAt,
+          metadata: forecast.metadata
+        };
+      });
+
+      return {
+        forecasts: processedForecasts,
+        summary: {
+          totalForecasts: forecasts.length,
+          averageAccuracy: forecasts.reduce((acc, f) => acc + (f.accuracy || 0), 0) / forecasts.length,
+          methodBreakdown: this.getMethodBreakdown(forecasts)
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`Error getting inventory forecasts: ${error.message}`);
+      throw new BadRequestException('Failed to retrieve inventory forecasts');
+    }
+  }
+
+  /**
+   * Get cost trend forecasts
+   */
+  async getCostForecasts(
+    tenantId: string,
+    userId: string,
+    userRole: string,
+    days: number = 30,
+  ): Promise<any> {
+    try {
+      const filter: any = {
+        tenantId: new Types.ObjectId(tenantId),
+        type: 'cost_trends',
+        status: 'completed'
+      };
+
+      // Role-based filtering for cost forecasts
+      if (userRole !== 'admin') {
+        filter.userId = new Types.ObjectId(userId);
+      }
+
+      const forecasts = await this.forecastModel
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .lean();
+
+      const processedForecasts = forecasts.map(forecast => {
+        const relevantPredictions = forecast.predictions.slice(0, days);
+        return {
+          forecastId: forecast._id,
+          method: forecast.forecastModel,
+          accuracy: forecast.accuracy,
+          confidenceLevel: forecast.confidenceLevel,
+          predictions: relevantPredictions,
+          createdAt: forecast.createdAt
+        };
+      });
+
+      return {
+        forecasts: processedForecasts,
+        summary: {
+          totalForecasts: forecasts.length,
+          averageAccuracy: forecasts.reduce((acc, f) => acc + (f.accuracy || 0), 0) / forecasts.length
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`Error getting cost forecasts: ${error.message}`);
+      throw new BadRequestException('Failed to retrieve cost forecasts');
+    }
+  }
+
+  /**
+   * Get historical inventory data for forecasting
+   */
+  private async getHistoricalInventoryData(
+    tenantId: string,
+    itemId: string,
+    userRole: string,
+    userId: string,
+  ): Promise<any[]> {
+    try {
+      // Get historical order data for the item
+      const pipeline = [
+        {
+          $match: {
+            tenantId: new Types.ObjectId(tenantId),
+            'items.itemId': new Types.ObjectId(itemId),
+            status: 'completed'
+          }
+        },
+        {
+          $unwind: '$items'
+        },
+        {
+          $match: {
+            'items.itemId': new Types.ObjectId(itemId)
+          }
+        },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' },
+              day: { $dayOfMonth: '$createdAt' }
+            },
+            totalQuantity: { $sum: '$items.quantity' },
+            totalValue: { $sum: { $multiply: ['$items.quantity', '$items.unitPrice'] } },
+            orderCount: { $sum: 1 }
+          }
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+        }
+      ];
+
+      const historicalData = await this.orderModel.aggregate(pipeline);
+
+      return historicalData.map(data => ({
+        timestamp: new Date(data._id.year, data._id.month - 1, data._id.day),
+        target_value: data.totalQuantity,
+        related_data: {
+          order_count: data.orderCount,
+          total_value: data.totalValue
+        }
+      }));
+
+    } catch (error) {
+      this.logger.error(`Error getting historical inventory data: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get historical cost data for forecasting
+   */
+  private async getHistoricalCostData(
+    tenantId: string,
+    userRole: string,
+    userId: string,
+  ): Promise<any[]> {
+    try {
+      const filter: any = {
+        tenantId: new Types.ObjectId(tenantId),
+        status: 'completed'
+      };
+
+      // Role-based filtering
+      if (userRole === 'vendor') {
+        filter.vendorId = new Types.ObjectId(userId);
+      } else if (userRole === 'supplier') {
+        filter.supplierId = new Types.ObjectId(userId);
+      }
+
+      const pipeline = [
+        { $match: filter },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' },
+              day: { $dayOfMonth: '$createdAt' }
+            },
+            totalCost: { $sum: '$totalAmount' },
+            orderCount: { $sum: 1 },
+            avgOrderValue: { $avg: '$totalAmount' }
+          }
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+        }
+      ];
+
+      const historicalData = await this.orderModel.aggregate(pipeline);
+
+      return historicalData.map(data => ({
+        timestamp: new Date(data._id.year, data._id.month - 1, data._id.day),
+        target_value: data.totalCost,
+        related_data: {
+          order_count: data.orderCount,
+          avg_order_value: data.avgOrderValue
+        }
+      }));
+
+    } catch (error) {
+      this.logger.error(`Error getting historical cost data: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Get method breakdown for forecasts
+   */
+  private getMethodBreakdown(forecasts: any[]): any {
+    return forecasts.reduce((acc, forecast) => {
+      const method = forecast.forecastModel || 'unknown';
+      acc[method] = (acc[method] || 0) + 1;
+      return acc;
+    }, {});
+  }
+
+  /**
+   * Get all forecasts with tenant and role filtering
+   */
+  async getAll(
+    tenantId: string,
+    userId: string,
+    userRole: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<any> {
+    try {
+      const filter: any = {
+        tenantId: new Types.ObjectId(tenantId)
+      };
+
+      // Role-based filtering
+      if (userRole === 'vendor') {
+        filter.userId = new Types.ObjectId(userId);
+      } else if (userRole === 'supplier') {
+        // Suppliers can see forecasts for items they supply
+        const supplierItems = await this.itemModel.find({
+          tenantId: new Types.ObjectId(tenantId),
+          'suppliers.supplierId': new Types.ObjectId(userId)
+        }).select('_id');
+        
+        filter.itemId = { $in: supplierItems.map(item => item._id) };
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [forecasts, total] = await Promise.all([
+        this.forecastModel
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .populate('itemId', 'name sku category')
+          .populate('userId', 'firstName lastName email')
+          .lean(),
+        this.forecastModel.countDocuments(filter)
+      ]);
+
+      return {
+        forecasts,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      };
+
+    } catch (error) {
+      this.logger.error(`Error getting forecasts: ${error.message}`);
+      throw new BadRequestException('Failed to retrieve forecasts');
+    }
+  }
+
+  /**
+   * Delete old forecasts to manage storage
+   */
+  async cleanupOldForecasts(retentionDays: number = 90): Promise<any> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+      const result = await this.forecastModel.deleteMany({
+        createdAt: { $lt: cutoffDate }
+      });
+
+      this.logger.log(`Cleaned up ${result.deletedCount} old forecasts`);
+
+      return {
+        deletedCount: result.deletedCount,
+        cutoffDate
+      };
+
+    } catch (error) {
+      this.logger.error(`Error cleaning up old forecasts: ${error.message}`);
+      throw new BadRequestException('Failed to cleanup old forecasts');
+    }
+  }
+}

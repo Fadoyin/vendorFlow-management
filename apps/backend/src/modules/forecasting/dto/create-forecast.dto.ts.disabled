@@ -1,0 +1,158 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEnum,
+  IsNumber,
+  IsDateString,
+  IsOptional,
+  IsString,
+  IsArray,
+  IsBoolean,
+  Min,
+  Max,
+  IsObject,
+} from 'class-validator';
+import { ForecastType, ForecastModel } from '../schemas/forecast.schema';
+
+export enum ForecastMethodDto {
+  AWS_FORECAST = 'aws_forecast',
+  PROPHET = 'prophet',
+  XGBOOST = 'xgboost',
+  HYBRID = 'hybrid',
+  AUTO = 'auto'
+}
+
+export class CreateForecastDto {
+  @ApiPropertyOptional({
+    description: 'Type of forecast to generate',
+    enum: ForecastType,
+    default: ForecastType.DEMAND
+  })
+  @IsOptional()
+  @IsEnum(ForecastType)
+  type?: ForecastType;
+
+  @ApiPropertyOptional({
+    description: 'ML model to use for forecasting (deprecated, use method instead)',
+    enum: ForecastModel,
+  })
+  @IsOptional()
+  @IsEnum(ForecastModel)
+  forecastModel?: ForecastModel;
+
+  @ApiPropertyOptional({
+    description: 'Forecasting method to use (AWS Forecast, Prophet, XGBoost, Hybrid, or Auto)',
+    enum: ForecastMethodDto,
+    default: ForecastMethodDto.AUTO
+  })
+  @IsOptional()
+  @IsEnum(ForecastMethodDto)
+  method?: ForecastMethodDto;
+
+  @ApiPropertyOptional({
+    description: 'Force the use of specified method even if not optimal',
+    default: false
+  })
+  @IsOptional()
+  @IsBoolean()
+  forceMethod?: boolean;
+
+  @ApiProperty({
+    description: 'Item ID to forecast for',
+    example: 'item_12345'
+  })
+  @IsString()
+  itemId: string;
+
+  @ApiPropertyOptional({
+    description: 'Vendor ID (defaults to current user)',
+    example: 'vendor_67890'
+  })
+  @IsOptional()
+  @IsString()
+  vendorId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Forecast horizon in days',
+    minimum: 1,
+    maximum: 365,
+    default: 30
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(365)
+  forecastHorizon?: number;
+
+  @ApiPropertyOptional({
+    description: 'Start date for forecast (ISO string)',
+    example: '2025-09-06T00:00:00.000Z'
+  })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'End date for forecast (ISO string)',
+    example: '2025-10-06T00:00:00.000Z'
+  })
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @ApiPropertyOptional({
+    description: 'Include confidence intervals in the forecast',
+    default: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  includeConfidence?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Historical data points for training (optional)',
+    type: [Object]
+  })
+  @IsOptional()
+  @IsArray()
+  historicalData?: Array<{
+    date: string;
+    quantity: number;
+    [key: string]: any;
+  }>;
+
+  @ApiPropertyOptional({
+    description: 'Additional parameters for forecasting model',
+    type: Object
+  })
+  @IsOptional()
+  @IsObject()
+  parameters?: {
+    confidence_level?: number;
+    seasonality_mode?: 'additive' | 'multiplicative';
+    trend_mode?: 'linear' | 'logistic';
+    holidays?: Array<{
+      ds: string;
+      holiday: string;
+    }>;
+    weekly_seasonality?: boolean;
+    yearly_seasonality?: boolean;
+    daily_seasonality?: boolean;
+    [key: string]: any;
+  };
+
+  @ApiPropertyOptional({
+    description: 'Tags for categorizing and filtering forecasts',
+    type: [String]
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Description or notes about this forecast',
+    maxLength: 500
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+}

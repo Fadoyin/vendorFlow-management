@@ -1,0 +1,215 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { FilterQuery, Model, ProjectionType, QueryOptions, SortOrder } from 'mongoose';
+
+export interface PaginationOptions {
+  page?: number;
+  limit?: number;
+  sort?: { [key: string]: SortOrder };
+}
+
+export interface QueryBuilderOptions extends PaginationOptions {
+  select?: string | string[];
+  populate?: string | string[];
+  lean?: boolean;
+}
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+@Injectable()
+export class QueryBuilderService {
+  private readonly logger = new Logger(QueryBuilderService.name);
+
+  /**
+   * Build optimized paginated query with proper indexing
+   */
+  async findWithPagination<T>(
+    model: Model<T>,
+    filter: FilterQuery<T> = {},
+    options: QueryBuilderOptions = {},
+  ): Promise<PaginatedResult<T>> {
+    const startTime = Date.now();
+    
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        sort = { createdAt: -1 },
+        select,
+        populate,
+        lean = true,
+      } = options;
+
+      // Validate pagination parameters
+      const validatedPage = Math.max(1, page);
+      const validatedLimit = Math.min(Math.max(1, limit), 100); // Cap at 100 items
+      const skip = (validatedPage - 1) * validatedLimit;
+
+      // Build base query
+      let query = model.find(filter);
+
+      // Apply optimizations
+      if (lean) {
+        query = query.lean();
+      }
+
+      if (select) {
+        query = query.select(select);
+      }
+
+      if (populate) {
+        if (Array.isArray(populate)) {
+          populate.forEach(pop => query = query.populate(pop));
+        } else {
+          query = query.populate(populate);
+        }
+      }
+
+      // Execute queries in parallel for better performance
+      const [data, total] = await Promise.all([
+        query
+          .sort(sort)
+          .skip(skip)
+          .limit(validatedLimit)
+          .exec(),
+        model.countDocuments(filter).exec(),
+      ]);
+
+      const pages = Math.ceil(total / validatedLimit);
+      const executionTime = Date.now() - startTime;
+
+      // Log slow queries for monitoring
+      if (executionTime > 1000) {
+        this.logger.warn(
+          `Slow query detected: ${model.modelName} - ${executionTime}ms`,
+          { filter, options, executionTime }
+        );
+      }
+
+      return {
+        data,
+        total,
+        page: validatedPage,
+        limit: validatedLimit,
+        pages,
+        hasNext: validatedPage < pages,
+        hasPrev: validatedPage > 1,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Query error in ${model.modelName}: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Build aggregation pipeline with optimization
+   */
+  async aggregate<T>(
+    model: Model<T>,
+    pipeline: any[],
+    options: { allowDiskUse?: boolean; maxTimeMS?: number } = {},
+  ): Promise<any[]> {
+    const startTime = Date.now();
+    
+    try {
+      const {
+        allowDiskUse = false,
+        maxTimeMS = 30000, // 30 seconds timeout
+      } = options;
+
+      const result = await model.aggregate(pipeline)
+        .allowDiskUse(allowDiskUse)
+        .maxTimeMS(maxTimeMS)
+        .exec();
+
+      const executionTime = Date.now() - startTime;
+      
+      if (executionTime > 5000) {
+        this.logger.warn(
+          `Slow aggregation: ${model.modelName} - ${executionTime}ms`,
+          { pipeline, executionTime }
+        );
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Aggregation error in ${model.modelName}: ${error.message}`,
+        error.stack
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Build search query with full-text search optimization
+   */
+  buildSearchFilter(searchTerm: string, searchFields: string[]): FilterQuery<any> {
+    if (!searchTerm || !searchFields.length) {
+      return {};
+    }
+
+    // Use MongoDB text search if available, otherwise use regex
+    return {
+      $or: searchFields.map(field => ({
+        [field]: { $regex: searchTerm, $options: 'i' }
+      }))
+    };
+  }
+
+  /**
+   * Build date range filter
+   */
+  buildDateRangeFilter(
+    field: string,
+    startDate?: Date | string,
+    endDate?: Date | string,
+  ): FilterQuery<any> {
+    const filter: any = {};
+
+    if (startDate || endDate) {
+      filter[field] = {};
+      
+      if (startDate) {
+        filter[field].$gte = new Date(startDate);
+      }
+      
+      if (endDate) {
+        filter[field].$lte = new Date(endDate);
+      }
+    }
+
+    return filter;
+  }
+
+  /**
+   * Build tenant filter for multi-tenancy
+   */
+  buildTenantFilter(tenantId: string): FilterQuery<any> {
+    return tenantId ? { tenantId } : {};
+  }
+
+  /**
+   * Build soft delete filter
+   */
+  buildActiveFilter(): FilterQuery<any> {
+    return { isDeleted: { $ne: true } };
+  }
+
+  /**
+   * Combine multiple filters
+   */
+  combineFilters(...filters: FilterQuery<any>[]): FilterQuery<any> {
+    return filters.reduce((combined, filter) => ({ ...combined, ...filter }), {});
+  }
+} 
