@@ -94,10 +94,8 @@ export default function VendorForecasting() {
       setInventoryGenerating(true)
       setError(null)
       
-      // Clear previous result to show fresh loading state
       setInventoryResult(null)
       
-      // Add timestamp to prevent caching
       const requestData = {
         ...inventoryParams,
         timestamp: Date.now()
@@ -117,14 +115,10 @@ export default function VendorForecasting() {
       setDemandGenerating(true)
       setError(null)
       
-      // Clear previous result to show fresh loading state
       setDemandResult(null)
       
-      // Add timestamp and ensure required fields
       const requestData = {
         ...demandParams,
-        modelType: demandParams.modelType === 'auto' ? 'arima' : demandParams.modelType,
-        itemIds: ['item1', 'item2'],
         timestamp: Date.now()
       }
       
@@ -137,633 +131,818 @@ export default function VendorForecasting() {
     }
   }
 
-  const renderCostForecasting = () => (
-    <div className="space-y-6">
-      {/* Cost Input Form */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Cost Forecasting Parameters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Forecast Months</label>
-            <select
-              value={costParams.forecastMonths}
-              onChange={(e) => setCostParams(prev => ({ ...prev, forecastMonths: parseInt(e.target.value) }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value={3}>3 Months</option>
-              <option value={6}>6 Months</option>
-              <option value={12}>12 Months</option>
-              <option value={24}>24 Months</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Model Type</label>
-            <select
-              value={costParams.modelType}
-              onChange={(e) => setCostParams(prev => ({ ...prev, modelType: e.target.value }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="linear">Linear</option>
-              <option value="polynomial">Polynomial</option>
-              <option value="exponential">Exponential</option>
-              <option value="seasonal">Seasonal</option>
-              <option value="hybrid">Hybrid</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Base Monthly Budget ($)</label>
-            <input
-              type="number"
-              value={costParams.baseMonthlyBudget}
-              onChange={(e) => setCostParams(prev => ({ ...prev, baseMonthlyBudget: parseFloat(e.target.value) }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-              min="0"
-              step="100"
-            />
-          </div>
-        </div>
-        
-        <button
-          onClick={generateCostForecast}
-          disabled={costGenerating}
-          className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
-        >
-          {costGenerating ? 'Generating...' : 'Generate Cost Forecast'}
-        </button>
-      </div>
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
 
-      {/* Cost Results */}
-      {costResult && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Cost Forecast Results</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Total Forecast Value</h4>
-              <p className="text-2xl font-bold text-blue-600">${costResult.summary?.totalForecastValue?.toLocaleString() || '0'}</p>
-            </div>
-            <div className="bg-green-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Average Monthly Cost</h4>
-              <p className="text-2xl font-bold text-green-600">${costResult.summary?.averageMonthlyCost?.toLocaleString() || '0'}</p>
-            </div>
-            <div className="bg-purple-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Growth Rate</h4>
-              <p className="text-2xl font-bold text-purple-600">{costResult.overallGrowthRate?.toFixed(1) || '0'}%</p>
-            </div>
-            <div className="bg-orange-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Confidence Score</h4>
-              <p className="text-2xl font-bold text-orange-600">{costResult.summary?.confidenceScore || '0'}%</p>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-semibold mb-2">Monthly Predictions</h4>
-              <div className="space-y-2">
-                {costResult.monthlyPredictions?.slice(0, 6).map((month: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <span>{month.month}</span>
-                    <span className="font-medium">${month.totalCost?.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-2">Category Breakdown</h4>
-              <div className="space-y-2">
-                {costResult.categoryBreakdown?.slice(0, 5).map((category: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                    <span>{category.category}</span>
-                    <div className="text-right">
-                      <div className="font-medium">${category.predictedCost?.toLocaleString()}</div>
-                      <div className={`text-xs ${category.trend === 'up' ? 'text-red-600' : category.trend === 'down' ? 'text-green-600' : 'text-gray-600'}`}>
-                        {category.trend === 'up' ? '↑' : category.trend === 'down' ? '↓' : '→'} {category.trend}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  const renderInventoryForecasting = () => (
-    <div className="space-y-6">
-      {/* Inventory Input Form */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Inventory Forecasting Parameters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Forecast Period (Days)</label>
-            <select
-              value={inventoryParams.forecastPeriod}
-              onChange={(e) => setInventoryParams(prev => ({ ...prev, forecastPeriod: parseInt(e.target.value) }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value={7}>7 Days (Short-term)</option>
-              <option value={30}>30 Days (Medium-term)</option>
-              <option value={60}>60 Days (Long-term)</option>
-              <option value={90}>90 Days (Extended)</option>
-              <option value={180}>180 Days</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Safety Stock Multiplier</label>
-            <select
-              value={inventoryParams.safetyStockMultiplier}
-              onChange={(e) => setInventoryParams(prev => ({ ...prev, safetyStockMultiplier: parseFloat(e.target.value) }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value={1}>1x (No Safety Stock)</option>
-              <option value={1.2}>1.2x (Low Safety)</option>
-              <option value={1.5}>1.5x (Medium Safety)</option>
-              <option value={2}>2x (High Safety)</option>
-            </select>
-          </div>
-          
-          <div className="flex items-center">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={inventoryParams.includeSeasonality}
-                onChange={(e) => setInventoryParams(prev => ({ ...prev, includeSeasonality: e.target.checked }))}
-                className="mr-2"
-              />
-              Include Seasonality
-            </label>
-          </div>
-        </div>
-        
-        <button
-          onClick={generateInventoryForecast}
-          disabled={inventoryGenerating}
-          className="mt-4 bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-700 disabled:opacity-50"
-        >
-          {inventoryGenerating ? 'Generating...' : 'Generate Inventory Forecast'}
-        </button>
-      </div>
-
-      {/* Current Items */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Current Inventory Items ({inventoryParams.inventoryItems.length})</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Current Stock</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reorder Level</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Lead Time</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {inventoryParams.inventoryItems.map((item, index) => (
-                <tr key={item.itemId}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.itemId}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.category}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.currentStock}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.reorderLevel}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.leadTime} days</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Inventory Results */}
-      {inventoryResult && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Inventory Forecast Results</h3>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Total Items</h4>
-              <p className="text-2xl font-bold text-blue-600">{inventoryResult.summary?.totalItems || 0}</p>
-            </div>
-            <div className="bg-orange-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Reorder Required</h4>
-              <p className="text-2xl font-bold text-orange-600">{inventoryResult.summary?.itemsRequiringReorder || 0}</p>
-            </div>
-            <div className="bg-red-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Critical Stock</h4>
-              <p className="text-2xl font-bold text-red-600">{inventoryResult.summary?.criticalStockItems || 0}</p>
-            </div>
-            <div className="bg-purple-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-600">Avg Days to Stockout</h4>
-              <p className="text-2xl font-bold text-purple-600">{inventoryResult.summary?.averageDaysUntilStockout || 0}</p>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            {inventoryResult.itemForecasts?.map((item: any) => (
-              <div key={item.itemId} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold">{item.itemName}</h4>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    item.riskLevel === 'low' ? 'bg-green-100 text-green-800' :
-                    item.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                    item.riskLevel === 'high' ? 'bg-orange-100 text-orange-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {item.riskLevel?.toUpperCase()} RISK
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mb-2">
-                  Current Stock: {item.currentStock} • Days until stockout: {item.daysUntilStockout}
-                </p>
-                {item.reorderRecommendation?.shouldReorder && (
-                  <div className={`p-2 rounded ${
-                    item.reorderRecommendation.urgency === 'critical' ? 'bg-red-50 border border-red-200' :
-                    item.reorderRecommendation.urgency === 'high' ? 'bg-orange-50 border border-orange-200' :
-                    'bg-yellow-50 border border-yellow-200'
-                  }`}>
-                    <p className="text-sm font-medium">
-                      Reorder Recommendation: {item.reorderRecommendation.recommendedQuantity} units by {item.reorderRecommendation.recommendedDate}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-
-  const renderDemandForecasting = () => (
-    <div className="space-y-6">
-      {/* Demand Input Form */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">Demand Forecasting Parameters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Forecast Period (Days)</label>
-            <select
-              value={demandParams.forecastPeriod}
-              onChange={(e) => setDemandParams(prev => ({ ...prev, forecastPeriod: parseInt(e.target.value) }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value={30}>30 Days</option>
-              <option value={60}>60 Days</option>
-              <option value={90}>90 Days</option>
-              <option value={180}>180 Days</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Model Type</label>
-            <select
-              value={demandParams.modelType}
-              onChange={(e) => setDemandParams(prev => ({ ...prev, modelType: e.target.value }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value="auto">Auto Select</option>
-              <option value="prophet">Prophet</option>
-              <option value="xgboost">XGBoost</option>
-              <option value="arima">ARIMA</option>
-              <option value="lstm">LSTM</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confidence Level</label>
-            <select
-              value={demandParams.confidenceLevel}
-              onChange={(e) => setDemandParams(prev => ({ ...prev, confidenceLevel: parseFloat(e.target.value) }))}
-              className="w-full border border-gray-300 rounded-md px-3 py-2"
-            >
-              <option value={0.80}>80%</option>
-              <option value={0.85}>85%</option>
-              <option value={0.90}>90%</option>
-              <option value={0.95}>95%</option>
-            </select>
-          </div>
-        </div>
-        
-        <button
-          onClick={generateDemandForecast}
-          disabled={demandGenerating}
-          className="mt-4 bg-purple-600 text-white px-6 py-2 rounded-md hover:bg-purple-700 disabled:opacity-50"
-        >
-          {demandGenerating ? 'Generating...' : 'Generate Demand Forecast'}
-        </button>
-      </div>
-
-      {/* Demand Results */}
-      {demandResult && (
-        <div className="space-y-6">
-          {/* Demand Forecast Overview */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Demand Forecast Overview</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-800">Total Items Analyzed</h4>
-                <p className="text-2xl font-bold text-blue-900">{demandResult.itemPredictions?.length || 0}</p>
-              </div>
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h4 className="font-medium text-green-800">Forecast Period</h4>
-                <p className="text-2xl font-bold text-green-900">{demandResult.metadata?.forecastPeriod || 0} days</p>
-              </div>
-              <div className="bg-purple-50 p-4 rounded-lg">
-                <h4 className="font-medium text-purple-800">Model Accuracy</h4>
-                <p className="text-2xl font-bold text-purple-900">
-                  {((demandResult.modelPerformance?.overallAccuracy || 0) * 100).toFixed(1)}%
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Item Predictions */}
-          {demandResult.itemPredictions && demandResult.itemPredictions.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Item Demand Predictions</h3>
-              <div className="space-y-4">
-                {demandResult.itemPredictions.slice(0, 3).map((item: any, index: number) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium">{item.itemName || `Item ${item.itemId}`}</h4>
-                      <span className="text-sm text-gray-600">Category: {item.category}</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                      <div className="text-center">
-                        <p className="text-sm text-gray-600">7-Day Prediction</p>
-                        <p className="text-xl font-bold text-blue-600">
-                          {item.predictions?.slice(0, 7).reduce((sum: number, p: any) => sum + p.predictedDemand, 0) || 0}
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm text-gray-600">30-Day Prediction</p>
-                        <p className="text-xl font-bold text-green-600">
-                          {item.predictions?.slice(0, 30).reduce((sum: number, p: any) => sum + p.predictedDemand, 0) || 0}
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-sm text-gray-600">Trend</p>
-                        <p className={`text-xl font-bold ${
-                          item.insights?.trendDirection === 'increasing' ? 'text-green-600' : 
-                          item.insights?.trendDirection === 'decreasing' ? 'text-red-600' : 
-                          'text-gray-600'
-                        }`}>
-                          {item.insights?.trendDirection === 'increasing' ? '↗' : 
-                           item.insights?.trendDirection === 'decreasing' ? '↘' : 
-                           '→'} {item.insights?.trendDirection || 'stable'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">
-                        Volatility: <span className={`font-medium ${
-                          item.insights?.volatility === 'high' ? 'text-red-600' :
-                          item.insights?.volatility === 'medium' ? 'text-yellow-600' :
-                          'text-green-600'
-                        }`}>{item.insights?.volatility || 'low'}</span>
-                      </span>
-                      <span className="text-gray-600">
-                        Seasonality: {((item.insights?.seasonalityStrength || 0) * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Aggregated Forecast */}
-          {demandResult.aggregatedForecast && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Total Demand Forecast</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium mb-3">Peak Demand Periods</h4>
-                  <div className="space-y-2">
-                    {demandResult.aggregatedForecast.peakDemandPeriods?.map((period: any, index: number) => (
-                      <div key={index} className="p-3 bg-red-50 border border-red-200 rounded">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-sm">{period.description}</span>
-                          <span className="text-lg font-bold text-red-600">{period.peakValue}</span>
-                        </div>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {new Date(period.startDate).toLocaleDateString()} - {new Date(period.endDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium mb-3">Low Demand Periods</h4>
-                  <div className="space-y-2">
-                    {demandResult.aggregatedForecast.lowDemandPeriods?.map((period: any, index: number) => (
-                      <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-sm">{period.description}</span>
-                          <span className="text-lg font-bold text-blue-600">{period.lowValue}</span>
-                        </div>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {new Date(period.startDate).toLocaleDateString()} - {new Date(period.endDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Category Analysis */}
-          {demandResult.categoryAnalysis && demandResult.categoryAnalysis.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-semibold mb-4">Category Analysis</h3>
-              <div className="space-y-4">
-                {demandResult.categoryAnalysis.map((category: any, index: number) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="font-medium">{category.category}</h4>
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        category.riskLevel === 'high' ? 'bg-red-100 text-red-800' :
-                        category.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {category.riskLevel?.toUpperCase()} RISK
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                      <div>
-                        <p className="text-sm text-gray-600">Predicted Demand</p>
-                        <p className="text-xl font-bold text-blue-600">{category.totalPredictedDemand}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Growth Rate</p>
-                        <p className={`text-xl font-bold ${category.growthRate > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {category.growthRate > 0 ? '+' : ''}{category.growthRate?.toFixed(1)}%
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Seasonal Pattern</p>
-                        <p className="text-sm font-medium">{category.seasonalPattern}</p>
-                      </div>
-                    </div>
-
-                    {category.topItems && category.topItems.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Top Items:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {category.topItems.slice(0, 3).map((item: any, itemIndex: number) => (
-                            <span key={itemIndex} className="px-2 py-1 bg-gray-100 rounded text-xs">
-                              {item.itemName}: {item.predictedDemand}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Model Performance */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Model Performance</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium mb-2">Selected Model: {demandResult.modelPerformance?.selectedModel}</h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  Overall Accuracy: {((demandResult.modelPerformance?.overallAccuracy || 0) * 100).toFixed(1)}%
-                </p>
-                <div className="space-y-2">
-                  {demandResult.modelPerformance?.modelComparison?.map((model: any) => (
-                    <div key={model.model} className={`flex items-center justify-between p-2 rounded ${model.recommended ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
-                      <span className="font-medium">{model.model.toUpperCase()}</span>
-                      <span className="text-sm">{(model.accuracy * 100).toFixed(1)}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-medium mb-2">Business Insights</h4>
-                <div className="space-y-2">
-                  {demandResult.businessInsights?.keyFindings?.slice(0, 3).map((finding: string, index: number) => (
-                    <div key={index} className="p-2 bg-blue-50 rounded text-sm">
-                      {finding}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Recommendations */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold mb-4">Actionable Recommendations</h3>
-            <div className="space-y-3">
-              {demandResult.businessInsights?.actionableRecommendations?.slice(0, 3).map((rec: any, index: number) => (
-                <div key={index} className={`p-3 rounded-md ${
-                  rec.priority === 'high' ? 'bg-red-50 border border-red-200' :
-                  rec.priority === 'medium' ? 'bg-yellow-50 border border-yellow-200' :
-                  'bg-blue-50 border border-blue-200'
-                }`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm">{rec.category}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      rec.priority === 'high' ? 'bg-red-100 text-red-800' :
-                      rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}>
-                      {rec.priority?.toUpperCase()}
-                    </span>
-                  </div>
-                  <p className="text-sm">{rec.recommendation}</p>
-                  <p className="text-xs text-gray-600 mt-1">Expected Impact: {rec.expectedImpact}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+  const getTabIcon = (tab: ForecastTab) => {
+    switch (tab) {
+      case 'cost':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+          </svg>
+        )
+      case 'inventory':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+        )
+      case 'demand':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        )
+    }
+  }
 
   return (
     <VendorRoute>
-      <DashboardLayout>
+      <DashboardLayout 
+        title="Vendor Forecasting" 
+        description="Optimize your business operations with intelligent forecasting analytics"
+      >
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Advanced Forecasting</h1>
-            <div className="text-sm text-gray-600">
-              Vendor Dashboard • Enhanced ML-Powered Predictions
+          {/* Header Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
+                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Vendor Forecasting</h1>
+                <p className="text-gray-600 mt-1">Predict costs, optimize inventory, and anticipate demand for your business</p>
+              </div>
             </div>
           </div>
 
-          {/* Error Display */}
+          {/* Error Alert */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Error</h3>
-                  <div className="mt-2 text-sm text-red-700">
-                    <p>{error}</p>
-                  </div>
+                <div>
+                  <h3 className="text-red-800 font-medium">Forecast Generation Error</h3>
+                  <p className="text-red-700 text-sm mt-1">{error}</p>
                 </div>
-                <div className="ml-auto pl-3">
-                  <button
-                    onClick={() => setError(null)}
-                    className="inline-flex bg-red-50 rounded-md p-1.5 text-red-500 hover:bg-red-100"
-                  >
-                    <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
+                <button
+                  onClick={() => setError(null)}
+                  className="ml-auto text-red-400 hover:text-red-600"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
           )}
 
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8">
-              {[
-                { id: 'cost', name: 'Cost Forecasting', icon: '💰' },
-                { id: 'inventory', name: 'Inventory Forecasting', icon: '📦' },
-                { id: 'demand', name: 'Demand Forecasting', icon: '📈' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as ForecastTab)}
-                  className={`${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-                >
-                  <span>{tab.icon}</span>
-                  <span>{tab.name}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
+          {/* Forecast Tabs */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="border-b border-gray-200">
+              <nav className="flex">
+                {[
+                  { key: 'cost', label: 'Cost Forecasting', description: 'Predict future operational costs' },
+                  { key: 'inventory', label: 'Inventory Planning', description: 'Optimize stock levels and orders' },
+                  { key: 'demand', label: 'Demand Analysis', description: 'Understand market demand patterns' }
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key as ForecastTab)}
+                    className={`flex-1 px-6 py-4 text-left transition-all ${
+                      activeTab === tab.key
+                        ? 'bg-green-50 border-b-2 border-green-500 text-green-700'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${
+                        activeTab === tab.key ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {getTabIcon(tab.key as ForecastTab)}
+                      </div>
+                      <div>
+                        <div className="font-medium">{tab.label}</div>
+                        <div className="text-xs text-gray-500 mt-1">{tab.description}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </nav>
+            </div>
 
-          {/* Tab Content */}
-          <div className="mt-6">
-            {activeTab === 'cost' && renderCostForecasting()}
-            {activeTab === 'inventory' && renderInventoryForecasting()}
-            {activeTab === 'demand' && renderDemandForecasting()}
+            <div className="p-6">
+              {/* Cost Forecasting Tab */}
+              {activeTab === 'cost' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Cost Parameters
+                      </h3>
+                      
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Forecast Period</label>
+                            <select
+                              value={costParams.forecastMonths}
+                              onChange={(e) => setCostParams({...costParams, forecastMonths: Number(e.target.value)})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            >
+                              <option value={3}>3 Months</option>
+                              <option value={6}>6 Months</option>
+                              <option value={12}>12 Months</option>
+                              <option value={18}>18 Months</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Model Type</label>
+                            <select
+                              value={costParams.modelType}
+                              onChange={(e) => setCostParams({...costParams, modelType: e.target.value})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                            >
+                              <option value="linear">Linear Growth</option>
+                              <option value="seasonal">Seasonal Patterns</option>
+                              <option value="exponential">Exponential Growth</option>
+                              <option value="auto">Auto-Select</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Monthly Budget: {formatCurrency(costParams.baseMonthlyBudget)}
+                          </label>
+                          <input
+                            type="range"
+                            min="5000"
+                            max="50000"
+                            step="1000"
+                            value={costParams.baseMonthlyBudget}
+                            onChange={(e) => setCostParams({...costParams, baseMonthlyBudget: Number(e.target.value)})}
+                            className="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer"
+                            style={{
+                              background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${(costParams.baseMonthlyBudget - 5000) / 450}%, #E5E7EB ${(costParams.baseMonthlyBudget - 5000) / 450}%, #E5E7EB 100%)`
+                            }}
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>$5K</span>
+                            <span>$50K</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Risk Level: {costParams.riskLevel}/5
+                          </label>
+                          <div className="flex items-center gap-2">
+                            {[1, 2, 3, 4, 5].map((level) => (
+                              <button
+                                key={level}
+                                onClick={() => setCostParams({...costParams, riskLevel: level})}
+                                className={`w-8 h-8 rounded-full border-2 transition-all ${
+                                  costParams.riskLevel >= level
+                                    ? 'bg-blue-500 border-blue-500 text-white'
+                                    : 'border-gray-300 text-gray-400 hover:border-blue-300'
+                                }`}
+                              >
+                                {level}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>Conservative</span>
+                            <span>Aggressive</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-blue-200">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <label className="text-sm font-medium text-gray-700">Include Seasonal Factors</label>
+                          </div>
+                          <button
+                            onClick={() => setCostParams({...costParams, includeSeasonalFactors: !costParams.includeSeasonalFactors})}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                              costParams.includeSeasonalFactors ? 'bg-blue-600' : 'bg-gray-200'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                costParams.includeSeasonalFactors ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={generateCostForecast}
+                        disabled={costGenerating}
+                        className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+                      >
+                        {costGenerating ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Analyzing Costs...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Generate Cost Forecast
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Cost Results */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Cost Forecast Results
+                      </h3>
+
+                      {costResult ? (
+                        <div className="space-y-4">
+                          {/* Key Metrics Cards */}
+                          <div className="grid grid-cols-1 gap-4">
+                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-green-600 text-sm font-medium">Total Forecast</p>
+                                  <p className="text-2xl font-bold text-green-900">
+                                    {formatCurrency(costResult.totalForecast)}
+                                  </p>
+                                  <p className="text-xs text-green-700 mt-1">
+                                    Over {costParams.forecastMonths} months
+                                  </p>
+                                </div>
+                                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-blue-600 text-sm font-medium">Monthly Average</p>
+                                  <p className="text-2xl font-bold text-blue-900">
+                                    {formatCurrency(costResult.monthlyAverage)}
+                                  </p>
+                                  <p className="text-xs text-blue-700 mt-1">
+                                    Estimated per month
+                                  </p>
+                                </div>
+                                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Monthly Breakdown */}
+                          <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                              </svg>
+                              Monthly Breakdown
+                            </h4>
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {costResult.monthlyBreakdown?.map((month: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors">
+                                  <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                    {month.month}
+                                  </span>
+                                  <span className="text-sm font-semibold text-gray-900">{formatCurrency(month.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Recommendations */}
+                          {costResult.recommendations && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                              <h4 className="font-medium text-amber-900 mb-3 flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Cost Optimization Tips
+                              </h4>
+                              <ul className="space-y-2">
+                                {costResult.recommendations.map((rec: string, index: number) => (
+                                  <li key={index} className="text-sm text-amber-800 flex items-start gap-2">
+                                    <div className="w-1 h-1 bg-amber-600 rounded-full mt-2 flex-shrink-0"></div>
+                                    {rec}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-8 text-center border border-gray-200">
+                          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                          </div>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to Forecast</h3>
+                          <p className="text-gray-600">Configure your parameters and generate a cost forecast to see predictions</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Inventory Forecasting Tab */}
+              {activeTab === 'inventory' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                        Inventory Parameters
+                      </h3>
+                      
+                      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-4 border border-purple-200 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Forecast Period</label>
+                            <select
+                              value={inventoryParams.forecastPeriod}
+                              onChange={(e) => setInventoryParams({...inventoryParams, forecastPeriod: Number(e.target.value)})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                            >
+                              <option value={7}>7 Days</option>
+                              <option value={14}>14 Days</option>
+                              <option value={30}>30 Days</option>
+                              <option value={60}>60 Days</option>
+                              <option value={90}>90 Days</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Safety Stock: {inventoryParams.safetyStockMultiplier}x
+                            </label>
+                            <input
+                              type="range"
+                              min="1"
+                              max="3"
+                              step="0.1"
+                              value={inventoryParams.safetyStockMultiplier}
+                              onChange={(e) => setInventoryParams({...inventoryParams, safetyStockMultiplier: Number(e.target.value)})}
+                              className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer"
+                            />
+                            <div className="flex justify-between text-xs text-gray-500 mt-1">
+                              <span>1x</span>
+                              <span>3x</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-purple-200">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <label className="text-sm font-medium text-gray-700">Include Seasonality</label>
+                          </div>
+                          <button
+                            onClick={() => setInventoryParams({...inventoryParams, includeSeasonality: !inventoryParams.includeSeasonality})}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                              inventoryParams.includeSeasonality ? 'bg-purple-600' : 'bg-gray-200'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                inventoryParams.includeSeasonality ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {/* Current Inventory Items Preview */}
+                        <div className="bg-white rounded-lg border border-purple-200 p-3">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            Sample Inventory Items
+                          </h4>
+                          <div className="space-y-1 text-xs text-gray-600">
+                            <div className="flex justify-between">
+                              <span>Electronics (150 units)</span>
+                              <span className="text-green-600">In Stock</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Office Supplies (75 units)</span>
+                              <span className="text-yellow-600">Low Stock</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={generateInventoryForecast}
+                        disabled={inventoryGenerating}
+                        className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-3 px-4 rounded-lg font-medium hover:from-purple-700 hover:to-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+                      >
+                        {inventoryGenerating ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Optimizing Inventory...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                            Generate Inventory Forecast
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Inventory Results */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Inventory Optimization
+                      </h3>
+
+                      {inventoryResult ? (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 gap-4">
+                            {inventoryResult.items?.map((item: any, index: number) => (
+                              <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      index === 0 ? 'bg-purple-500' :
+                                      index === 1 ? 'bg-gray-400' :
+                                      index === 2 ? 'bg-orange-500' : 'bg-blue-500'
+                                    }`}></div>
+                                    {item.itemName}
+                                  </h4>
+                                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                    item.stockStatus === 'healthy' ? 'bg-green-100 text-green-800' :
+                                    item.stockStatus === 'low' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                  }`}>
+                                    {item.stockStatus}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                                    </svg>
+                                    <span className="text-gray-600">Current:</span>
+                                    <span className="font-medium text-gray-900">{item.currentStock}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="text-gray-600">Recommended:</span>
+                                    <span className="font-medium text-green-600">{item.recommendedStock}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="text-gray-600">Reorder at:</span>
+                                    <span className="font-medium text-orange-600">{item.reorderPoint}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <span className="text-gray-600">Days to reorder:</span>
+                                    <span className="font-medium text-blue-600">{item.daysUntilReorder}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {inventoryResult.recommendations && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                              <h4 className="font-medium text-blue-900 mb-3 flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Inventory Recommendations
+                              </h4>
+                              <ul className="space-y-2">
+                                {inventoryResult.recommendations.map((rec: string, index: number) => (
+                                  <li key={index} className="text-sm text-blue-800 flex items-start gap-2">
+                                    <div className="w-1 h-1 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                                    {rec}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-8 text-center border border-gray-200">
+                          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                            </svg>
+                          </div>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Inventory Analysis Ready</h3>
+                          <p className="text-gray-600">Generate a forecast to optimize your inventory levels and reorder strategies</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Demand Forecasting Tab */}
+              {activeTab === 'demand' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                        </svg>
+                        Demand Analysis Parameters
+                      </h3>
+                      
+                      <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-lg p-4 border border-indigo-200 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Forecast Period</label>
+                            <select
+                              value={demandParams.forecastPeriod}
+                              onChange={(e) => setDemandParams({...demandParams, forecastPeriod: Number(e.target.value)})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                            >
+                              <option value={30}>30 Days</option>
+                              <option value={60}>60 Days</option>
+                              <option value={90}>90 Days</option>
+                              <option value={180}>6 Months</option>
+                              <option value={365}>1 Year</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Model Type</label>
+                            <select
+                              value={demandParams.modelType}
+                              onChange={(e) => setDemandParams({...demandParams, modelType: e.target.value})}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                            >
+                              <option value="auto">Auto-Select</option>
+                              <option value="linear">Linear Regression</option>
+                              <option value="seasonal">Seasonal ARIMA</option>
+                              <option value="exponential">Exponential Smoothing</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Confidence Level: {(demandParams.confidenceLevel * 100).toFixed(0)}%
+                          </label>
+                          <input
+                            type="range"
+                            min="0.8"
+                            max="0.99"
+                            step="0.01"
+                            value={demandParams.confidenceLevel}
+                            onChange={(e) => setDemandParams({...demandParams, confidenceLevel: Number(e.target.value)})}
+                            className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>80%</span>
+                            <span>99%</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Historical Data: {demandParams.historicalWindow} days
+                          </label>
+                          <input
+                            type="range"
+                            min="90"
+                            max="730"
+                            step="30"
+                            value={demandParams.historicalWindow}
+                            onChange={(e) => setDemandParams({...demandParams, historicalWindow: Number(e.target.value)})}
+                            className="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>3 months</span>
+                            <span>2 years</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-indigo-200">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <label className="text-sm font-medium text-gray-700">Include External Factors</label>
+                          </div>
+                          <button
+                            onClick={() => setDemandParams({...demandParams, includeExternalFactors: !demandParams.includeExternalFactors})}
+                            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                              demandParams.includeExternalFactors ? 'bg-indigo-600' : 'bg-gray-200'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                demandParams.includeExternalFactors ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={generateDemandForecast}
+                        disabled={demandGenerating}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-3 px-4 rounded-lg font-medium hover:from-indigo-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+                      >
+                        {demandGenerating ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Analyzing Demand...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                            </svg>
+                            Generate Demand Forecast
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Demand Results */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Demand Insights
+                      </h3>
+
+                      {demandResult ? (
+                        <div className="space-y-4">
+                          {/* Key Metrics */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-lg p-4 border border-indigo-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-indigo-600 text-sm font-medium">Total Demand</p>
+                                  <p className="text-2xl font-bold text-indigo-900">{demandResult.totalDemand}</p>
+                                  <p className="text-xs text-indigo-700 mt-1">
+                                    Over {demandParams.forecastPeriod} days
+                                  </p>
+                                </div>
+                                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-purple-600 text-sm font-medium">Peak Demand</p>
+                                  <p className="text-2xl font-bold text-purple-900">{demandResult.peakDemand}</p>
+                                  <p className="text-xs text-purple-700 mt-1">
+                                    Highest expected day
+                                  </p>
+                                </div>
+                                <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
+                                  </svg>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Top Items */}
+                          {demandResult.topItems && (
+                            <div className="bg-white border border-gray-200 rounded-lg p-4">
+                              <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                </svg>
+                                High Demand Items
+                              </h4>
+                              <div className="space-y-2">
+                                {demandResult.topItems.map((item: any, index: number) => (
+                                  <div key={index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors">
+                                    <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                      <div className={`w-2 h-2 rounded-full ${
+                                        index === 0 ? 'bg-yellow-500' :
+                                        index === 1 ? 'bg-gray-400' :
+                                        index === 2 ? 'bg-orange-500' : 'bg-blue-500'
+                                      }`}></div>
+                                      {item.name}
+                                    </span>
+                                    <span className="text-sm font-semibold text-gray-900">{item.demand} units</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Business Insights */}
+                          {demandResult.businessInsights && (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                              <h4 className="font-medium text-green-900 mb-3 flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                                Strategic Insights
+                              </h4>
+                              <ul className="space-y-2">
+                                {demandResult.businessInsights.map((insight: string, index: number) => (
+                                  <li key={index} className="text-sm text-green-800 flex items-start gap-2">
+                                    <div className="w-1 h-1 bg-green-600 rounded-full mt-2 flex-shrink-0"></div>
+                                    {insight}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-8 text-center border border-gray-200">
+                          <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                            </svg>
+                          </div>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Demand Analysis Ready</h3>
+                          <p className="text-gray-600">Generate a forecast to understand your market demand patterns and opportunities</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </DashboardLayout>
