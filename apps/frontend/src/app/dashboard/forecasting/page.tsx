@@ -632,16 +632,16 @@ export default function AdminForecastingPage() {
                     {inventoryResult ? (
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 gap-4">
-                          {inventoryResult.items?.map((item: any, index: number) => (
+                          {inventoryResult.itemForecasts?.map((item: any, index: number) => (
                             <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="font-medium text-gray-900">{item.itemName}</h4>
                                 <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                  item.stockStatus === 'healthy' ? 'bg-green-100 text-green-800' :
-                                  item.stockStatus === 'low' ? 'bg-yellow-100 text-yellow-800' :
+                                  item.riskLevel === 'low' ? 'bg-green-100 text-green-800' :
+                                  item.riskLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
                                   'bg-red-100 text-red-800'
                                 }`}>
-                                  {item.stockStatus}
+                                  {item.riskLevel}
                                 </span>
                               </div>
                               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -650,16 +650,18 @@ export default function AdminForecastingPage() {
                                   <span className="font-medium text-gray-900 ml-2">{item.currentStock}</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-600">Recommended:</span>
-                                  <span className="font-medium text-gray-900 ml-2">{item.recommendedStock}</span>
+                                  <span className="text-gray-600">Recommended Quantity:</span>
+                                  <span className="font-medium text-gray-900 ml-2">{item.reorderRecommendation?.recommendedQuantity || 0}</span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-600">Reorder Point:</span>
-                                  <span className="font-medium text-gray-900 ml-2">{item.reorderPoint}</span>
+                                  <span className="text-gray-600">Should Reorder:</span>
+                                  <span className={`font-medium ml-2 ${item.reorderRecommendation?.shouldReorder ? 'text-orange-600' : 'text-green-600'}`}>
+                                    {item.reorderRecommendation?.shouldReorder ? 'Yes' : 'No'}
+                                  </span>
                                 </div>
                                 <div>
-                                  <span className="text-gray-600">Days Until Reorder:</span>
-                                  <span className="font-medium text-gray-900 ml-2">{item.daysUntilReorder}</span>
+                                  <span className="text-gray-600">Days Until Stockout:</span>
+                                  <span className="font-medium text-gray-900 ml-2">{item.daysUntilStockout}</span>
                                 </div>
                               </div>
                             </div>

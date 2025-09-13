@@ -105,10 +105,13 @@ export class RealForecastingService {
           forecast = await this.generateProphetLikeForecast(historicalData, forecastPeriod, 'demand');
         }
 
+        // Fetch real item details
+        const itemDetails = await this.getItemDetails(itemId, tenantId);
+        
         itemForecasts.push({
           itemId,
-          itemName: `Product ${itemId}`,
-          category: 'General',
+          itemName: itemDetails.name || `Product ${itemId}`,
+          category: itemDetails.category || 'General',
           predictions: forecast.predictions,
           metrics: forecast.metrics,
           insights: forecast.insights,
@@ -829,5 +832,42 @@ export class RealForecastingService {
     if (avgVariance < 5) return 'low';
     if (avgVariance < 15) return 'medium';
     return 'high';
+  }
+
+  private async getItemDetails(itemId: string, tenantId: string): Promise<{name: string, category: string}> {
+    try {
+      // Use Mongoose connection to avoid BSON version conflicts
+      const mongoose = require('mongoose');
+      const { ObjectId } = mongoose.Types;
+      
+      console.log(`🔍 Fetching item details for ${itemId} in tenant ${tenantId}`);
+      
+      const item = await mongoose.connection.db.collection('items').findOne({
+        _id: new ObjectId(itemId),
+        tenantId: new ObjectId(tenantId),
+        isDeleted: false
+      });
+      
+      if (item) {
+        console.log(`✅ Found item: ${item.name} (${item.category})`);
+        return {
+          name: item.name || `Item ${itemId}`,
+          category: item.category || 'General'
+        };
+      }
+      
+      console.log(`❌ Item not found: ${itemId}`);
+      return {
+        name: `Item ${itemId}`,
+        category: 'General'
+      };
+      
+    } catch (error) {
+      console.error('❌ Error fetching item details:', error);
+      return {
+        name: `Item ${itemId}`,
+        category: 'General'
+      };
+    }
   }
 } 

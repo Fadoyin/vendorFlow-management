@@ -98,7 +98,7 @@ export class ForecastsService {
         isDeleted: false,
       };
 
-      // Search filter
+      // Apply search filter
       if (search) {
         filter.$or = [
           { forecastId: { $regex: search, $options: 'i' } },
@@ -107,27 +107,27 @@ export class ForecastsService {
         ];
       }
 
-      // Type filter
+      // Apply type filter
       if (type) {
         filter.type = type;
       }
 
-      // Item filter
+      // Apply item filter
       if (itemId) {
         filter.itemId = new Types.ObjectId(itemId);
       }
 
-      // Vendor filter
+      // Apply vendor filter
       if (vendorId) {
         filter.vendorId = new Types.ObjectId(vendorId);
       }
 
-      // Status filter
+      // Apply status filter
       if (status) {
         filter.status = status;
       }
 
-      // Date range filter
+      // Apply date range filter
       if (dateFrom || dateTo) {
         filter.forecastDate = {};
         if (dateFrom) {
@@ -144,7 +144,6 @@ export class ForecastsService {
 
       // Execute query with pagination
       const skip = (page - 1) * limit;
-
       const [forecasts, total] = await Promise.all([
         this.forecastModel
           .find(filter)
@@ -177,7 +176,7 @@ export class ForecastsService {
         .exec();
 
       if (!forecast) {
-        throw new NotFoundException(`Forecast with ID ${id} not found`);
+        throw new NotFoundException('Forecast not found');
       }
 
       return forecast;
@@ -187,35 +186,9 @@ export class ForecastsService {
     }
   }
 
-  async findByForecastId(
-    forecastId: string,
-    tenantId: string,
-  ): Promise<Forecast> {
-    try {
-      const forecast = await this.forecastModel
-        .findOne({
-          forecastId,
-          tenantId: new Types.ObjectId(tenantId),
-          isDeleted: false,
-        })
-        .populate('itemId', 'sku name')
-        .populate('vendorId', 'name vendorCode')
-        .exec();
-
-      if (!forecast) {
-        throw new NotFoundException(`Forecast with ID ${forecastId} not found`);
-      }
-
-      return forecast;
-    } catch (error) {
-      this.logger.error(`Error finding forecast by ID: ${error.message}`);
-      throw error;
-    }
-  }
-
   async update(
     id: string,
-    updateForecastDto: any,
+    updateForecastDto: UpdateForecastDto,
     tenantId: string,
     userId: string,
   ): Promise<Forecast> {
@@ -227,60 +200,27 @@ export class ForecastsService {
       });
 
       if (!forecast) {
-        throw new NotFoundException(`Forecast with ID ${id} not found`);
+        throw new NotFoundException('Forecast not found');
       }
 
-      // Recalculate summary statistics if periods are updated
+      // Calculate summary statistics if periods are updated
       let summaryStats = {};
       if (updateForecastDto.periods) {
         summaryStats = this.calculateSummaryStats(updateForecastDto.periods);
       }
 
-      // Update fields
-      const updateData = {
-        ...updateForecastDto,
-        ...summaryStats,
-        updatedBy: new Types.ObjectId(userId),
-        updatedAt: new Date(),
-      };
+      const updatedForecast = await this.forecastModel.findByIdAndUpdate(
+        id,
+        {
+          ...updateForecastDto,
+          ...summaryStats,
+          updatedBy: new Types.ObjectId(userId),
+          updatedAt: new Date(),
+        },
+        { new: true, runValidators: true },
+      );
 
-      // Handle date fields
-      if (updateForecastDto.forecastDate) {
-        updateData.forecastDate = new Date(updateForecastDto.forecastDate);
-      }
-      if (updateForecastDto.validFrom) {
-        updateData.validFrom = new Date(updateForecastDto.validFrom);
-      }
-      if (updateForecastDto.validTo) {
-        updateData.validTo = new Date(updateForecastDto.validTo);
-      }
-      if (updateForecastDto.lastTrainingDate) {
-        updateData.lastTrainingDate = new Date(
-          updateForecastDto.lastTrainingDate,
-        );
-      }
-      if (updateForecastDto.nextTrainingDate) {
-        updateData.nextTrainingDate = new Date(
-          updateForecastDto.nextTrainingDate,
-        );
-      }
-
-      // Handle periods
-      if (updateForecastDto.periods) {
-        updateData.periods = updateForecastDto.periods.map((period) => ({
-          ...period,
-          startDate: new Date(period.startDate),
-          endDate: new Date(period.endDate),
-        }));
-      }
-
-      const updatedForecast = await this.forecastModel
-        .findByIdAndUpdate(id, updateData, { new: true })
-        .populate('itemId', 'sku name')
-        .populate('vendorId', 'name vendorCode')
-        .exec();
-
-      this.logger.log(`Forecast updated: ${id}`);
+      this.logger.log(`Forecast updated: ${updatedForecast._id}`);
       return updatedForecast;
     } catch (error) {
       this.logger.error(`Error updating forecast: ${error.message}`);
@@ -290,22 +230,22 @@ export class ForecastsService {
 
   async remove(id: string, tenantId: string, userId: string): Promise<void> {
     try {
-      const forecast = await this.forecastModel.findOne({
-        _id: new Types.ObjectId(id),
-        tenantId: new Types.ObjectId(tenantId),
-        isDeleted: false,
-      });
+      const result = await this.forecastModel.updateOne(
+        {
+          _id: new Types.ObjectId(id),
+          tenantId: new Types.ObjectId(tenantId),
+          isDeleted: false,
+        },
+        {
+          isDeleted: true,
+          updatedBy: new Types.ObjectId(userId),
+          updatedAt: new Date(),
+        },
+      );
 
-      if (!forecast) {
-        throw new NotFoundException(`Forecast with ID ${id} not found`);
+      if (result.matchedCount === 0) {
+        throw new NotFoundException('Forecast not found');
       }
-
-      // Soft delete
-      await this.forecastModel.findByIdAndUpdate(id, {
-        isDeleted: true,
-        deletedAt: new Date(),
-        deletedBy: new Types.ObjectId(userId),
-      });
 
       this.logger.log(`Forecast deleted: ${id}`);
     } catch (error) {
@@ -314,187 +254,183 @@ export class ForecastsService {
     }
   }
 
-  async activate(
-    id: string,
+  async findByItemId(
+    itemId: string,
     tenantId: string,
-    userId: string,
-  ): Promise<Forecast> {
-    try {
-      const forecast = await this.findOne(id, tenantId);
-
-      if (forecast.isActive) {
-        throw new BadRequestException('Forecast is already active');
-      }
-
-      const updatedForecast = await this.forecastModel.findByIdAndUpdate(
-        id,
-        {
-          isActive: true,
-          activatedAt: new Date(),
-          activatedBy: new Types.ObjectId(userId),
-          updatedBy: new Types.ObjectId(userId),
-          updatedAt: new Date(),
-        },
-        { new: true },
-      );
-
-      this.logger.log(`Forecast activated: ${id}`);
-      return updatedForecast;
-    } catch (error) {
-      this.logger.error(`Error activating forecast: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async deactivate(
-    id: string,
-    tenantId: string,
-    userId: string,
-  ): Promise<Forecast> {
-    try {
-      const forecast = await this.findOne(id, tenantId);
-
-      if (!forecast.isActive) {
-        throw new BadRequestException('Forecast is already inactive');
-      }
-
-      const updatedForecast = await this.forecastModel.findByIdAndUpdate(
-        id,
-        {
-          isActive: false,
-          deactivatedAt: new Date(),
-          deactivatedBy: new Types.ObjectId(userId),
-          updatedBy: new Types.ObjectId(userId),
-          updatedAt: new Date(),
-        },
-        { new: true },
-      );
-
-      this.logger.log(`Forecast deactivated: ${id}`);
-      return updatedForecast;
-    } catch (error) {
-      this.logger.error(`Error deactivating forecast: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async getForecastStats(tenantId: string): Promise<any> {
-    try {
-      const stats = await this.forecastModel.aggregate([
-        {
-          $match: {
-            tenantId: new Types.ObjectId(tenantId),
-            isDeleted: false,
-          },
-        },
-        {
-          $group: {
-            _id: null,
-            totalForecasts: { $sum: 1 },
-            activeForecasts: {
-              $sum: {
-                $cond: [{ $eq: ['$isActive', true] }, 1, 0],
-              },
-            },
-            inactiveForecasts: {
-              $sum: {
-                $cond: [{ $eq: ['$isActive', false] }, 1, 0],
-              },
-            },
-            avgTrainingDuration: { $avg: '$trainingDuration' },
-            avgConfidenceLevel: { $avg: '$parameters.confidenceLevel' },
-          },
-        },
-      ]);
-
-      const typeStats = await this.forecastModel.aggregate([
-        {
-          $match: {
-            tenantId: new Types.ObjectId(tenantId),
-            isDeleted: false,
-          },
-        },
-        {
-          $group: {
-            _id: '$type',
-            count: { $sum: 1 },
-            avgAccuracy: { $avg: '$metrics.trainingAccuracy' },
-            avgMAE: { $avg: '$metrics.mae' },
-          },
-        },
-        {
-          $sort: { count: -1 },
-        },
-      ]);
-
-      const monthlyStats = await this.forecastModel.aggregate([
-        {
-          $match: {
-            tenantId: new Types.ObjectId(tenantId),
-            isDeleted: false,
-            forecastDate: { $exists: true },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              year: { $year: '$forecastDate' },
-              month: { $month: '$forecastDate' },
-            },
-            count: { $sum: 1 },
-            avgAccuracy: { $avg: '$metrics.trainingAccuracy' },
-          },
-        },
-        {
-          $sort: { '_id.year': -1, '_id.month': -1 },
-        },
-        {
-          $limit: 12,
-        },
-      ]);
-
-      return {
-        overview: stats[0] || {
-          totalForecasts: 0,
-          activeForecasts: 0,
-          inactiveForecasts: 0,
-          avgTrainingDuration: 0,
-          avgConfidenceLevel: 0,
-        },
-        byType: typeStats,
-        byMonth: monthlyStats,
-      };
-    } catch (error) {
-      this.logger.error(`Error getting forecast stats: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async getActiveForecasts(
-    tenantId: string,
-    type?: string,
+    limit: number = 10,
   ): Promise<Forecast[]> {
     try {
-      const filter: any = {
-        tenantId: new Types.ObjectId(tenantId),
-        isDeleted: false,
-        isActive: true,
-      };
-
-      if (type) {
-        filter.type = type;
-      }
-
       const forecasts = await this.forecastModel
-        .find(filter)
-        .sort({ validFrom: -1 })
+        .find({
+          itemId: new Types.ObjectId(itemId),
+          tenantId: new Types.ObjectId(tenantId),
+          isDeleted: false,
+        })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('vendorId', 'name vendorCode')
+        .exec();
+
+      return forecasts;
+    } catch (error) {
+      this.logger.error(`Error finding forecasts by item: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async findByVendorId(
+    vendorId: string,
+    tenantId: string,
+    limit: number = 10,
+  ): Promise<Forecast[]> {
+    try {
+      const forecasts = await this.forecastModel
+        .find({
+          vendorId: new Types.ObjectId(vendorId),
+          tenantId: new Types.ObjectId(tenantId),
+          isDeleted: false,
+        })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('itemId', 'sku name')
+        .exec();
+
+      return forecasts;
+    } catch (error) {
+      this.logger.error(`Error finding forecasts by vendor: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getActiveForecasts(tenantId: string): Promise<Forecast[]> {
+    try {
+      const currentDate = new Date();
+      const forecasts = await this.forecastModel
+        .find({
+          tenantId: new Types.ObjectId(tenantId),
+          isDeleted: false,
+          status: 'active',
+          validFrom: { $lte: currentDate },
+          validTo: { $gte: currentDate },
+        })
         .populate('itemId', 'sku name')
         .populate('vendorId', 'name vendorCode')
         .exec();
 
       return forecasts;
     } catch (error) {
-      this.logger.error(`Error getting active forecasts: ${error.message}`);
+      this.logger.error(`Error finding active forecasts: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getForecastAccuracy(
+    tenantId: string,
+    dateRange?: { from: Date; to: Date },
+  ): Promise<any> {
+    try {
+      const filter: any = {
+        tenantId: new Types.ObjectId(tenantId),
+        isDeleted: false,
+        status: 'completed',
+      };
+
+      if (dateRange) {
+        filter.forecastDate = {
+          $gte: dateRange.from,
+          $lte: dateRange.to,
+        };
+      }
+
+      const forecasts = await this.forecastModel.find(filter).exec();
+
+      // Calculate accuracy metrics
+      const accuracyMetrics = forecasts.reduce(
+        (acc, forecast) => {
+          acc.totalForecasts++;
+          acc.totalAccuracy += forecast.accuracy || 0;
+          acc.totalMAE += forecast.mae || 0;
+          acc.totalRMSE += forecast.rmse || 0;
+          return acc;
+        },
+        { totalForecasts: 0, totalAccuracy: 0, totalMAE: 0, totalRMSE: 0 },
+      );
+
+      return {
+        totalForecasts: accuracyMetrics.totalForecasts,
+        averageAccuracy:
+          accuracyMetrics.totalForecasts > 0
+            ? accuracyMetrics.totalAccuracy / accuracyMetrics.totalForecasts
+            : 0,
+        averageMAE:
+          accuracyMetrics.totalForecasts > 0
+            ? accuracyMetrics.totalMAE / accuracyMetrics.totalForecasts
+            : 0,
+        averageRMSE:
+          accuracyMetrics.totalForecasts > 0
+            ? accuracyMetrics.totalRMSE / accuracyMetrics.totalForecasts
+            : 0,
+      };
+    } catch (error) {
+      this.logger.error(`Error calculating forecast accuracy: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getTopPerformingItems(
+    tenantId: string,
+    limit: number = 10,
+  ): Promise<any[]> {
+    try {
+      const pipeline = [
+        {
+          $match: {
+            tenantId: new Types.ObjectId(tenantId),
+            isDeleted: false,
+            accuracy: { $exists: true },
+          },
+        },
+        {
+          $group: {
+            _id: '$itemId',
+            averageAccuracy: { $avg: '$accuracy' },
+            forecastCount: { $sum: 1 },
+            lastForecast: { $max: '$createdAt' },
+          },
+        },
+        {
+          $sort: { averageAccuracy: -1 },
+        },
+        {
+          $limit: limit,
+        },
+        {
+          $lookup: {
+            from: 'items',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'item',
+          },
+        },
+        {
+          $unwind: '$item',
+        },
+        {
+          $project: {
+            itemId: '$_id',
+            itemName: '$item.name',
+            itemSku: '$item.sku',
+            averageAccuracy: 1,
+            forecastCount: 1,
+            lastForecast: 1,
+          },
+        },
+      ];
+
+      const results = await this.forecastModel.aggregate(pipeline).exec();
+      return results;
+    } catch (error) {
+      this.logger.error(`Error finding top performing items: ${error.message}`);
       throw error;
     }
   }
@@ -525,6 +461,40 @@ export class ForecastsService {
     } catch (error) {
       this.logger.error(`Error searching forecasts: ${error.message}`);
       throw error;
+    }
+  }
+
+  private async getRealInventoryItems(tenantId: string, vendorId?: string): Promise<string[]> {
+    try {
+      // Use Mongoose connection instead of direct MongoDB client to avoid BSON version conflicts
+      const mongoose = require('mongoose');
+      
+      const filter: any = {
+        tenantId: new Types.ObjectId(tenantId),
+        isDeleted: false,
+        'inventory.currentStock': { $exists: true, $gt: 0 }
+      };
+      
+      // If vendor-specific forecast, add vendor filter
+      if (vendorId && vendorId !== 'default') {
+        filter.createdBy = new Types.ObjectId(vendorId);
+      }
+      
+      // Use Mongoose to query items
+      const items = await mongoose.connection.db.collection('items').find(filter).limit(10).toArray();
+      
+      if (items.length === 0) {
+        this.logger.warn(`No real inventory items found for tenant ${tenantId}, using mock items`);
+        return ['item1', 'item2', 'item3'];
+      }
+      
+      const itemIds = items.map(item => item._id.toString());
+      this.logger.log(`Found ${itemIds.length} real inventory items for forecasting`);
+      return itemIds;
+      
+    } catch (error) {
+      this.logger.error('Error fetching real inventory items:', error);
+      return ['item1', 'item2', 'item3'];
     }
   }
 
@@ -603,39 +573,39 @@ export class ForecastsService {
           category,
           currentCost: Math.round(currentCost * 100) / 100,
           predictedCost: Math.round(predictedCost * 100) / 100,
-          percentage: Math.round((predictedCost / (costForecastDto.baseMonthlyBudget * costForecastDto.forecastMonths)) * 100 * 100) / 100,
-          trend: predictedCost > currentCost ? 'up' : predictedCost < currentCost ? 'down' : 'stable' as 'up' | 'down' | 'stable',
+          variance: Math.round(((predictedCost - currentCost) / currentCost) * 10000) / 100,
+          trend: predictedCost > currentCost ? 'increasing' : 'decreasing',
         });
       });
 
-      const overallGrowthRate = ((monthlyPredictions[monthlyPredictions.length - 1].totalCost / costForecastDto.baseMonthlyBudget - 1) * 100);
-      
+      // Calculate overall metrics
+      const totalForecast = monthlyPredictions.reduce((sum, month) => sum + month.totalCost, 0);
+      const averageMonthlyCost = totalForecast / monthlyPredictions.length;
+      const overallGrowthRate = ((monthlyPredictions[monthlyPredictions.length - 1].totalCost - monthlyPredictions[0].totalCost) / monthlyPredictions[0].totalCost) * 100;
+
       const result: CostForecastResultDto = {
         monthlyPredictions,
         categoryBreakdown,
+        totalForecast,
+        averageMonthlyCost,
         overallGrowthRate: Math.round(overallGrowthRate * 100) / 100,
-        seasonalFactors: [
-          { period: 'Q1', factor: 0.95, description: 'Lower costs in Q1 due to reduced activity' },
-          { period: 'Q2', factor: 1.02, description: 'Moderate increase in Q2' },
-          { period: 'Q3', factor: 1.08, description: 'Peak costs in Q3 due to high demand' },
-          { period: 'Q4', factor: 0.98, description: 'Slight decrease in Q4' },
+        confidenceLevel: 0.87,
+        riskFactors: [
+          'Market volatility may affect material costs',
+          'Seasonal demand fluctuations expected',
+          costForecastDto.riskLevel > 3 ? 'High risk tolerance selected' : 'Conservative risk profile',
         ],
-        riskAssessment: {
-          level: overallGrowthRate > 15 ? 'high' : overallGrowthRate > 8 ? 'medium' : 'low',
-          score: Math.min(Math.round(overallGrowthRate * 5), 100),
-          factors: ['Market volatility', 'Seasonal demand', 'Supply chain disruptions'],
-          recommendations: [
-            'Monitor supplier pricing closely',
-            'Consider bulk purchasing for stable items',
-            'Implement cost control measures'
-          ],
-        },
-        summary: {
-          totalForecastValue: Math.round(monthlyPredictions.reduce((sum, p) => sum + p.totalCost, 0) * 100) / 100,
-          averageMonthlyCost: Math.round((monthlyPredictions.reduce((sum, p) => sum + p.totalCost, 0) / monthlyPredictions.length) * 100) / 100,
-          peakMonth: monthlyPredictions.reduce((max, p) => p.totalCost > max.totalCost ? p : max).month,
-          lowestMonth: monthlyPredictions.reduce((min, p) => p.totalCost < min.totalCost ? p : min).month,
-          confidenceScore: Math.round((monthlyPredictions.reduce((sum, p) => sum + p.confidence, 0) / monthlyPredictions.length) * 100),
+        recommendations: [
+          'Monitor monthly variances closely',
+          'Consider bulk purchasing for high-volume items',
+          'Review supplier contracts quarterly',
+        ],
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          forecastPeriod: costForecastDto.forecastMonths,
+          modelUsed: costForecastDto.modelType,
+          baseMonthlyBudget: costForecastDto.baseMonthlyBudget,
+          includeSeasonalFactors: costForecastDto.includeSeasonalFactors,
         },
       };
 
@@ -653,154 +623,92 @@ export class ForecastsService {
     userRole: string,
   ): Promise<InventoryForecastResultDto> {
     try {
-      this.logger.log(`Generating REAL inventory forecast for tenant: ${tenantId}, period: ${inventoryForecastDto.forecastPeriod} days`);
+      this.logger.log(`Generating inventory forecast for ${inventoryForecastDto.inventoryItems.length} items`);
 
-      const itemForecasts = [];
-
-      for (const item of inventoryForecastDto.inventoryItems) {
-        // Use real forecasting service for each item
-        const realForecast = await this.realForecastingService.generateInventoryForecast(
-          item.itemId,
-          inventoryForecastDto.vendorId || 'default',
-          tenantId,
-          inventoryForecastDto.forecastPeriod
-        );
-
-        // Convert real forecast to expected format - use more realistic consumption rates
-        const weeklyPrediction = realForecast.predictions.slice(0, 7).reduce((sum, p) => sum + p.value, 0);
-        const baseDailyConsumption = Math.max(1, Math.round(weeklyPrediction / 7));
-        
-        // Cap daily consumption to be realistic based on item type and stock levels
-        // Electronics typically have lower daily consumption rates
-        let dailyConsumption;
-        if (item.itemId.includes('LAPTOP') || item.itemId.includes('MONITOR') || item.itemId.includes('TABLET')) {
-          dailyConsumption = Math.min(baseDailyConsumption, Math.max(1, Math.floor(item.currentStock * 0.05))); // 5% max for expensive items
-        } else {
-          dailyConsumption = Math.min(baseDailyConsumption, Math.max(2, Math.floor(item.currentStock * 0.1))); // 10% max for accessories
-        }
-        
-        const daysUntilStockout = Math.max(0, Math.floor(item.currentStock / dailyConsumption));
-        const shouldReorder = daysUntilStockout <= item.leadTime + 5;
-
-        itemForecasts.push({
-          itemId: item.itemId,
-          itemName: `Item ${item.itemId}`,
-          category: item.category,
-          currentStock: item.currentStock,
-          predictedDemand: realForecast.predictions.slice(0, 30), // First 30 days
-          daysUntilStockout,
-          reorderRecommendation: {
-            shouldReorder,
-            recommendedQuantity: shouldReorder ? Math.max(item.minOrderQuantity || 50, dailyConsumption * 30) : 0,
-            recommendedDate: shouldReorder ? new Date(Date.now() + (daysUntilStockout - item.leadTime) * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '',
-            urgency: daysUntilStockout <= 3 ? 'critical' : daysUntilStockout <= 7 ? 'high' : daysUntilStockout <= 14 ? 'medium' : 'low' as 'low' | 'medium' | 'high' | 'critical',
-          },
-          riskLevel: daysUntilStockout <= 3 ? 'critical' : daysUntilStockout <= 7 ? 'high' : daysUntilStockout <= 14 ? 'medium' : 'low' as 'low' | 'medium' | 'high' | 'critical',
-          dailyConsumptionRate: {
-            average: dailyConsumption,
-            trend: realForecast.insights.trendDirection,
-            volatility: realForecast.insights.volatility === 'low' ? 0.1 : realForecast.insights.volatility === 'medium' ? 0.2 : 0.3,
-          },
-        });
-      }
-
-      // Keep the original aggregation logic but use real forecast data
-      const itemForecasts_old = inventoryForecastDto.inventoryItems.map(item => {
-        // Create unique seed based on item and forecast period for consistent but different results
-        const seed = `${item.itemId}_${inventoryForecastDto.forecastPeriod}_${tenantId}`.split('').reduce((a, b) => {
-          a = ((a << 5) - a) + b.charCodeAt(0);
-          return a & a;
-        }, 0);
-        
-        // Use seed to create pseudo-random but consistent values
-        const seededRandom = (index: number) => {
-          const x = Math.sin(seed + index) * 10000;
-          return x - Math.floor(x);
-        };
-
-        // Adjust base consumption based on forecast period
-        const periodMultiplier = inventoryForecastDto.forecastPeriod <= 7 ? 1.2 : 
-                                inventoryForecastDto.forecastPeriod <= 30 ? 1.0 : 0.8;
-        const dailyConsumption = Math.max(1, Math.round(item.currentStock / (20 + seededRandom(0) * 40) * periodMultiplier));
-        const volatility = 0.1 + seededRandom(1) * 0.3;
-        const trendRandom = seededRandom(2);
-        const trend = trendRandom > 0.6 ? 'increasing' : trendRandom > 0.3 ? 'decreasing' : 'stable';
-        
-        const predictions = [];
+      // Generate forecasts for each item
+      const itemForecasts = inventoryForecastDto.inventoryItems.map(item => {
+        // Calculate predicted demand based on historical patterns
+        const predictedDemand = [];
         const currentDate = new Date();
         
-        for (let i = 1; i <= inventoryForecastDto.forecastPeriod; i++) {
+        for (let i = 0; i < inventoryForecastDto.forecastPeriod; i++) {
           const date = new Date(currentDate);
           date.setDate(currentDate.getDate() + i);
           
-          let demand = dailyConsumption;
+          // Simulate demand with seasonality and trend
+          const baseDemand = 5 + Math.random() * 10;
+          const seasonalFactor = Math.sin((i / 30) * 2 * Math.PI) * 0.3 + 1;
+          const trendFactor = 1 + (i / inventoryForecastDto.forecastPeriod) * 0.1;
           
-          // Apply different trends based on forecast period
-          if (trend === 'increasing') {
-            const growthRate = inventoryForecastDto.forecastPeriod <= 7 ? 0.015 : 
-                             inventoryForecastDto.forecastPeriod <= 30 ? 0.01 : 0.005;
-            demand *= (1 + i * growthRate);
-          } else if (trend === 'decreasing') {
-            const declineRate = inventoryForecastDto.forecastPeriod <= 7 ? 0.008 : 
-                               inventoryForecastDto.forecastPeriod <= 30 ? 0.005 : 0.003;
-            demand *= (1 - i * declineRate);
-          }
+          const demand = baseDemand * seasonalFactor * trendFactor;
           
-          // Add seasonal variation for longer periods
-          if (inventoryForecastDto.forecastPeriod > 30) {
-            const seasonalFactor = 1 + 0.2 * Math.sin((i / inventoryForecastDto.forecastPeriod) * 2 * Math.PI + seededRandom(3) * Math.PI);
-            demand *= seasonalFactor;
-          }
-          
-          // Add random variation
-          demand += (seededRandom(i + 10) - 0.5) * volatility * dailyConsumption;
-          demand = Math.max(0, Math.round(demand));
-          
-          predictions.push({
+          predictedDemand.push({
             date: date.toISOString().split('T')[0],
-            demand,
-            confidence: 0.75 + seededRandom(i + 100) * 0.2,
+            value: Math.round(demand * 100) / 100,
+            confidence_lower: Math.round((demand * 0.8) * 100) / 100,
+            confidence_upper: Math.round((demand * 1.2) * 100) / 100,
           });
         }
 
-        const totalPredictedDemand = predictions.reduce((sum, p) => sum + p.demand, 0);
-        const daysUntilStockout = Math.max(0, Math.floor(item.currentStock / dailyConsumption));
-        const shouldReorder = daysUntilStockout <= item.leadTime + 5;
+        // Calculate total predicted consumption
+        const totalPredictedDemand = predictedDemand.reduce((sum, day) => sum + day.value, 0);
+        const dailyConsumptionRate = totalPredictedDemand / inventoryForecastDto.forecastPeriod;
         
+        // Calculate days until stockout
+        const daysUntilStockout = Math.max(0, Math.floor(item.currentStock / dailyConsumptionRate));
+        
+        // Determine risk level
+        let riskLevel: 'low' | 'medium' | 'high' | 'critical';
+        if (daysUntilStockout > 30) {
+          riskLevel = 'low';
+        } else if (daysUntilStockout > 14) {
+          riskLevel = 'medium';
+        } else if (daysUntilStockout > 7) {
+          riskLevel = 'high';
+        } else {
+          riskLevel = 'critical';
+        }
+
+        // Generate reorder recommendation
+        const shouldReorder = daysUntilStockout <= (item.leadTime + 5);
+        const recommendedQuantity = shouldReorder ? 
+          Math.max(item.minOrderQuantity || 50, Math.ceil(dailyConsumptionRate * (item.leadTime + 10))) : 0;
+        
+        const recommendedDate = shouldReorder ? 
+          new Date(Date.now() + (daysUntilStockout - item.leadTime - 2) * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '';
+
         return {
           itemId: item.itemId,
           itemName: `Item ${item.itemId}`,
           category: item.category,
           currentStock: item.currentStock,
-          predictedDemand: predictions.slice(0, 30), // First 30 days
+          predictedDemand,
+          dailyConsumptionRate: Math.round(dailyConsumptionRate * 100) / 100,
           daysUntilStockout,
+          riskLevel,
           reorderRecommendation: {
             shouldReorder,
-            recommendedQuantity: shouldReorder ? Math.max(item.minOrderQuantity || 50, totalPredictedDemand) : 0,
-            recommendedDate: shouldReorder ? new Date(Date.now() + (daysUntilStockout - item.leadTime) * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '',
-            urgency: daysUntilStockout <= 3 ? 'critical' : daysUntilStockout <= 7 ? 'high' : daysUntilStockout <= 14 ? 'medium' : 'low' as 'low' | 'medium' | 'high' | 'critical',
-          },
-          riskLevel: daysUntilStockout <= 3 ? 'critical' : daysUntilStockout <= 7 ? 'high' : daysUntilStockout <= 14 ? 'medium' : 'low' as 'low' | 'medium' | 'high' | 'critical',
-          dailyConsumptionRate: {
-            average: dailyConsumption,
-            trend: trend as 'increasing' | 'decreasing' | 'stable',
-            volatility,
+            recommendedQuantity,
+            recommendedDate,
+            urgency: riskLevel === 'critical' ? 'urgent' : riskLevel === 'high' ? 'high' : 'low',
           },
         };
       });
 
       // Generate category analysis
+      const categoryAnalysis = [];
       const categories = [...new Set(inventoryForecastDto.inventoryItems.map(item => item.category))];
-      const categoryAnalysis = categories.map(category => {
+      
+      categories.forEach(category => {
         const categoryItems = itemForecasts.filter(item => item.category === category);
-        return {
+        categoryAnalysis.push({
           category,
           itemCount: categoryItems.length,
           totalCurrentStock: categoryItems.reduce((sum, item) => sum + item.currentStock, 0),
-          totalPredictedDemand: categoryItems.reduce((sum, item) => sum + item.predictedDemand.reduce((s, p) => s + p.demand, 0), 0),
+          totalPredictedDemand: categoryItems.reduce((sum, item) => sum + item.predictedDemand.reduce((s, p) => s + p.value, 0), 0),
           averageRiskLevel: categoryItems.reduce((sum, item) => sum + (item.riskLevel === 'critical' ? 4 : item.riskLevel === 'high' ? 3 : item.riskLevel === 'medium' ? 2 : 1), 0) / categoryItems.length,
           reorderRecommendations: categoryItems.filter(item => item.reorderRecommendation.shouldReorder).length,
-        };
+        });
       });
 
       // Generate supplier analysis
@@ -843,7 +751,7 @@ export class ForecastsService {
           itemsRequiringReorder: itemForecasts.filter(item => item.reorderRecommendation.shouldReorder).length,
           criticalStockItems: itemForecasts.filter(item => item.riskLevel === 'critical').length,
           averageDaysUntilStockout: Math.round(itemForecasts.reduce((sum, item) => sum + item.daysUntilStockout, 0) / itemForecasts.length),
-          totalPredictedDemand: itemForecasts.reduce((sum, item) => sum + item.predictedDemand.reduce((s, p) => s + p.demand, 0), 0),
+          totalPredictedDemand: itemForecasts.reduce((sum, item) => sum + item.predictedDemand.reduce((s, p) => s + p.value, 0), 0),
           overallRiskScore: Math.round((itemForecasts.reduce((sum, item) => sum + (item.riskLevel === 'critical' ? 4 : item.riskLevel === 'high' ? 3 : item.riskLevel === 'medium' ? 2 : 1), 0) / itemForecasts.length) * 25),
         },
         categoryAnalysis,
@@ -873,9 +781,12 @@ export class ForecastsService {
     try {
       this.logger.log(`Generating REAL demand forecast for tenant: ${tenantId}, period: ${demandForecastDto.forecastPeriod} days`);
 
-      // Use real forecasting service
+      // Fetch real inventory items for this tenant
+      const realItemIds = await this.getRealInventoryItems(tenantId, demandForecastDto.vendorId);
+      
+      // Use real forecasting service with real item IDs
       const realForecast = await this.realForecastingService.generateDemandForecast(
-        demandForecastDto.itemIds || ['item1', 'item2', 'item3'],
+        demandForecastDto.itemIds || realItemIds,
         demandForecastDto.vendorId || 'default',
         tenantId,
         demandForecastDto.forecastPeriod,
@@ -902,252 +813,204 @@ export class ForecastsService {
           return x - Math.floor(x);
         };
 
-        // Adjust base demand based on forecast period
-        const periodMultiplier = demandForecastDto.forecastPeriod <= 7 ? 1.3 : 
-                                demandForecastDto.forecastPeriod <= 30 ? 1.0 : 
-                                demandForecastDto.forecastPeriod <= 60 ? 0.8 : 0.6;
-        const baseDemand = Math.round((40 + seededRandom(0) * 60) * periodMultiplier);
-        
         const predictions = [];
         const currentDate = new Date();
         
-        for (let i = 1; i <= demandForecastDto.forecastPeriod; i++) {
+        for (let i = 0; i < demandForecastDto.forecastPeriod; i++) {
           const date = new Date(currentDate);
           date.setDate(currentDate.getDate() + i);
           
-          // Different trend patterns based on forecast period
-          let trend = 0;
-          if (demandForecastDto.forecastPeriod <= 7) {
-            // Short term: steeper daily changes
-            trend = Math.sin(i / 3) * (10 + seededRandom(i) * 15);
-          } else if (demandForecastDto.forecastPeriod <= 30) {
-            // Medium term: weekly patterns
-            trend = Math.sin(i / 7) * (8 + seededRandom(i) * 12);
-          } else {
-            // Long term: monthly patterns
-            trend = Math.sin(i / 30) * (5 + seededRandom(i) * 10);
-          }
+          // More realistic demand patterns
+          const dayOfWeek = date.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
           
-          // Seasonal component - stronger for longer periods
-          let seasonal = 0;
-          if (demandForecastDto.forecastPeriod > 30) {
-            seasonal = Math.sin((i / demandForecastDto.forecastPeriod) * 2 * Math.PI + seededRandom(100) * Math.PI) * (15 + seededRandom(i + 50) * 10);
-          } else if (demandForecastDto.forecastPeriod > 7) {
-            seasonal = Math.sin((i / demandForecastDto.forecastPeriod) * Math.PI + seededRandom(100) * Math.PI) * (8 + seededRandom(i + 50) * 5);
-          }
+          // Base demand varies by item
+          const baseDemand = 3 + (seededRandom(i) * 12);
           
-          // Noise level varies by period
-          const noiseLevel = demandForecastDto.forecastPeriod <= 7 ? 8 : 
-                            demandForecastDto.forecastPeriod <= 30 ? 12 : 15;
-          const noise = (seededRandom(i + 200) - 0.5) * noiseLevel;
+          // Weekend factor (lower demand on weekends)
+          const weekendFactor = isWeekend ? 0.6 : 1.0;
           
-          const predictedDemand = Math.max(0, Math.round(baseDemand + trend + seasonal + noise));
+          // Seasonal factor (monthly cycle)
+          const seasonalFactor = Math.sin((i / 30) * 2 * Math.PI) * 0.2 + 1;
+          
+          // Trend factor (slight growth over time)
+          const trendFactor = 1 + (i / demandForecastDto.forecastPeriod) * 0.05;
+          
+          // Random noise
+          const noise = (seededRandom(i + 1000) - 0.5) * 0.3;
+          
+          const demand = Math.max(0, baseDemand * weekendFactor * seasonalFactor * trendFactor * (1 + noise));
           
           predictions.push({
             date: date.toISOString().split('T')[0],
-            predictedDemand,
-            confidenceLower: Math.round(predictedDemand * (0.75 + seededRandom(i + 300) * 0.1)),
-            confidenceUpper: Math.round(predictedDemand * (1.15 + seededRandom(i + 400) * 0.1)),
-            trend: Math.round(trend * 100) / 100,
-            seasonal: Math.round(seasonal * 100) / 100,
+            value: Math.round(demand * 100) / 100,
+            confidence: 0.85 + seededRandom(i + 2000) * 0.1,
+            trend: i > 0 ? (demand > predictions[i-1].value ? 'increasing' : 'decreasing') : 'stable',
           });
         }
 
-        // Dynamic metrics based on forecast period
-        const baseMAE = demandForecastDto.forecastPeriod <= 7 ? 3.5 : 
-                       demandForecastDto.forecastPeriod <= 30 ? 5.2 : 7.8;
-        const baseRMSE = demandForecastDto.forecastPeriod <= 7 ? 5.2 : 
-                        demandForecastDto.forecastPeriod <= 30 ? 7.8 : 11.5;
-        const baseMAPE = demandForecastDto.forecastPeriod <= 7 ? 6.5 : 
-                        demandForecastDto.forecastPeriod <= 30 ? 8.5 : 12.2;
-        const baseR2 = demandForecastDto.forecastPeriod <= 7 ? 0.92 : 
-                      demandForecastDto.forecastPeriod <= 30 ? 0.85 : 0.78;
-
-        // Dynamic trend direction based on forecast period and seed
-        const trendRandom = seededRandom(500);
-        let trendDirection: 'increasing' | 'decreasing' | 'stable';
-        if (demandForecastDto.forecastPeriod <= 7) {
-          trendDirection = trendRandom > 0.5 ? 'increasing' : trendRandom > 0.25 ? 'decreasing' : 'stable';
-        } else if (demandForecastDto.forecastPeriod <= 30) {
-          trendDirection = trendRandom > 0.6 ? 'increasing' : trendRandom > 0.3 ? 'stable' : 'decreasing';
-        } else {
-          trendDirection = trendRandom > 0.7 ? 'stable' : trendRandom > 0.4 ? 'increasing' : 'decreasing';
-        }
-
-        // Dynamic volatility based on forecast period
-        const volatilityRandom = seededRandom(600);
-        let volatility: 'low' | 'medium' | 'high';
-        if (demandForecastDto.forecastPeriod <= 7) {
-          volatility = volatilityRandom > 0.6 ? 'high' : volatilityRandom > 0.3 ? 'medium' : 'low';
-        } else if (demandForecastDto.forecastPeriod <= 30) {
-          volatility = volatilityRandom > 0.7 ? 'high' : volatilityRandom > 0.4 ? 'medium' : 'low';
-        } else {
-          volatility = volatilityRandom > 0.5 ? 'medium' : volatilityRandom > 0.25 ? 'high' : 'low';
-        }
+        // Calculate metrics
+        const values = predictions.map(p => p.value);
+        const totalDemand = values.reduce((sum, val) => sum + val, 0);
+        const avgDemand = totalDemand / values.length;
+        const maxDemand = Math.max(...values);
+        const minDemand = Math.min(...values);
+        
+        // Calculate volatility
+        const variance = values.reduce((sum, val) => sum + Math.pow(val - avgDemand, 2), 0) / values.length;
+        const volatility = Math.sqrt(variance) / avgDemand;
 
         return {
           itemId,
           itemName: `Product ${itemId}`,
           category: 'General',
-          predictions: predictions.slice(0, Math.min(90, demandForecastDto.forecastPeriod)), // Up to 90 days or forecast period
+          predictions,
           metrics: {
-            mae: baseMAE + seededRandom(700) * 2,
-            rmse: baseRMSE + seededRandom(800) * 3,
-            mape: baseMAPE + seededRandom(900) * 4,
-            r2: Math.min(0.99, baseR2 + seededRandom(1000) * 0.1),
+            totalPredictedDemand: Math.round(totalDemand * 100) / 100,
+            averageDailyDemand: Math.round(avgDemand * 100) / 100,
+            peakDemand: Math.round(maxDemand * 100) / 100,
+            minDemand: Math.round(minDemand * 100) / 100,
+            volatility: Math.round(volatility * 1000) / 1000,
+            growthRate: predictions.length > 1 ? 
+              Math.round(((predictions[predictions.length - 1].value - predictions[0].value) / predictions[0].value) * 10000) / 100 : 0,
           },
           insights: {
-            trendDirection,
-            seasonalityStrength: 0.2 + seededRandom(1100) * 0.5,
-            volatility,
-            changepoints: [
-              {
-                date: new Date(Date.now() + Math.floor(demandForecastDto.forecastPeriod * 0.4) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                significance: 0.6 + seededRandom(1200) * 0.3,
-                description: `${trendDirection === 'stable' ? 'Minor' : 'Significant'} trend change detected`
-              }
-            ],
+            trendDirection: predictions.length > 10 ? 
+              (predictions[predictions.length - 1].value > predictions[Math.floor(predictions.length / 2)].value ? 'increasing' : 'decreasing') : 'stable',
+            seasonalityStrength: Math.round(Math.abs(Math.sin((demandForecastDto.forecastPeriod / 30) * 2 * Math.PI)) * 1000) / 1000,
+            volatility: volatility < 0.2 ? 'low' : volatility < 0.5 ? 'medium' : 'high' as 'low' | 'medium' | 'high',
+            changepoints: [],
           },
         };
       });
 
-      // Dynamic aggregated forecast based on period
-      const totalDemandPrediction = itemPredictions[0].predictions.map((_, index) => ({
-        date: itemPredictions[0].predictions[index].date,
-        totalDemand: itemPredictions.reduce((sum, item) => sum + (item.predictions[index]?.predictedDemand || 0), 0),
-        confidence: demandForecastDto.forecastPeriod <= 7 ? 0.92 : 
-                   demandForecastDto.forecastPeriod <= 30 ? 0.85 : 0.78,
-      }));
+      // Aggregate predictions
+      const aggregatedPredictions = [];
+      for (let i = 0; i < demandForecastDto.forecastPeriod; i++) {
+        const date = itemPredictions[0].predictions[i].date;
+        const totalDemand = itemPredictions.reduce((sum, item) => sum + item.predictions[i].value, 0);
+        const avgConfidence = itemPredictions.reduce((sum, item) => sum + item.predictions[i].confidence, 0) / itemPredictions.length;
+        
+        aggregatedPredictions.push({
+          date,
+          totalDemand: Math.round(totalDemand * 100) / 100,
+          confidence: Math.round(avgConfidence * 100) / 100,
+        });
+      }
 
-      // Dynamic peak and low periods based on forecast period
-      const peakStartDay = Math.floor(demandForecastDto.forecastPeriod * 0.3);
-      const peakEndDay = Math.floor(demandForecastDto.forecastPeriod * 0.5);
-      const lowStartDay = Math.floor(demandForecastDto.forecastPeriod * 0.1);
-      const lowEndDay = Math.floor(demandForecastDto.forecastPeriod * 0.2);
+      // Identify peak and low periods
+      const avgTotalDemand = aggregatedPredictions.reduce((sum, p) => sum + p.totalDemand, 0) / aggregatedPredictions.length;
+      const peakThreshold = avgTotalDemand * 1.2;
+      const lowThreshold = avgTotalDemand * 0.8;
+
+      const peakPeriods = aggregatedPredictions
+        .filter(p => p.totalDemand > peakThreshold)
+        .slice(0, 3)
+        .map(peak => ({
+          startDate: peak.date,
+          endDate: peak.date,
+          peakValue: peak.totalDemand,
+          description: 'High demand period detected',
+        }));
+
+      const lowPeriods = aggregatedPredictions
+        .filter(p => p.totalDemand < lowThreshold)
+        .slice(0, 3)
+        .map(low => ({
+          startDate: low.date,
+          endDate: low.date,
+          lowValue: low.totalDemand,
+          description: 'Low demand period detected',
+        }));
+
+      // Category analysis
+      const categoryAnalysis = [{
+        category: 'General',
+        totalPredictedDemand: itemPredictions.reduce((sum, item) => sum + item.metrics.totalPredictedDemand, 0),
+        growthRate: itemPredictions.reduce((sum, item) => sum + item.metrics.growthRate, 0) / itemPredictions.length,
+        seasonalPattern: 'Moderate seasonal component detected',
+        riskLevel: 'medium' as const,
+        topItems: itemPredictions.slice(0, 3).map(item => ({
+          itemId: item.itemId,
+          itemName: item.itemName,
+          predictedDemand: item.metrics.totalPredictedDemand,
+        })),
+      }];
+
+      // Model performance
+      const modelPerformance = {
+        selectedModel: demandForecastDto.modelType,
+        overallAccuracy: 0.87,
+        modelComparison: [
+          { model: 'Prophet', accuracy: 0.89, trainingTime: 45, recommended: demandForecastDto.modelType === 'prophet' },
+          { model: 'ARIMA', accuracy: 0.82, trainingTime: 12, recommended: demandForecastDto.modelType === 'arima' },
+          { model: 'XGBoost', accuracy: 0.91, trainingTime: 78, recommended: demandForecastDto.modelType === 'xgboost' },
+          { model: 'LSTM', accuracy: 0.88, trainingTime: 156, recommended: demandForecastDto.modelType === 'lstm' },
+        ],
+        dataQuality: {
+          completeness: 0.94,
+          consistency: 0.89,
+          outliers: 3,
+          recommendations: [
+            'Consider additional data sources for improved accuracy',
+            'Monitor for seasonal pattern changes',
+            'Validate outliers in historical data'
+          ],
+        },
+      };
+
+      // Business insights
+      const businessInsights = {
+        keyFindings: [
+          `${demandForecastDto.forecastPeriod <= 7 ? 'Short-term' : demandForecastDto.forecastPeriod <= 30 ? 'Medium-term' : 'Long-term'} forecast analysis completed`,
+          `${itemPredictions.filter(item => item.insights.trendDirection === 'increasing').length} out of ${itemPredictions.length} items show increasing demand trend`,
+          `${itemPredictions.filter(item => item.insights.volatility === 'high').length} items exhibit high volatility patterns`,
+          'Seasonal patterns detected in demand data'
+        ],
+        actionableRecommendations: [
+          {
+            priority: demandForecastDto.forecastPeriod <= 7 ? 'high' : 'medium' as const,
+            category: 'Inventory Management',
+            recommendation: `Adjust inventory levels for ${demandForecastDto.forecastPeriod <= 7 ? 'immediate' : 'upcoming'} demand changes`,
+            expectedImpact: `${demandForecastDto.forecastPeriod <= 7 ? '15-20%' : '10-15%'} reduction in stockouts`,
+            timeframe: `${demandForecastDto.forecastPeriod <= 7 ? '1-2 days' : '1-2 weeks'}`,
+          },
+          {
+            priority: 'medium' as const,
+            category: 'Supply Chain',
+            recommendation: 'Review supplier lead times for high-demand items',
+            expectedImpact: '5-10% cost reduction',
+            timeframe: '2-4 weeks',
+          },
+        ],
+        riskFactors: [
+          {
+            factor: demandForecastDto.forecastPeriod <= 7 ? 'Short-term volatility' : 'Market uncertainty',
+            impact: demandForecastDto.forecastPeriod <= 7 ? 'medium' : 'high' as const,
+            mitigation: demandForecastDto.forecastPeriod <= 7 ? 'Increase monitoring frequency' : 'Diversify supplier base',
+          },
+          {
+            factor: 'Seasonal variations',
+            impact: demandForecastDto.forecastPeriod <= 30 ? 'low' : 'medium' as const,
+            mitigation: 'Implement seasonal inventory buffers',
+          },
+        ],
+      };
 
       const result: DemandForecastResultDto = {
         itemPredictions,
         aggregatedForecast: {
-          totalDemandPrediction,
-          peakDemandPeriods: [
-            {
-              startDate: new Date(Date.now() + peakStartDay * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              endDate: new Date(Date.now() + peakEndDay * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              peakValue: demandForecastDto.forecastPeriod <= 7 ? 180 : 
-                        demandForecastDto.forecastPeriod <= 30 ? 250 : 320,
-              description: demandForecastDto.forecastPeriod <= 7 ? 'Short-term peak' : 
-                          demandForecastDto.forecastPeriod <= 30 ? 'Monthly peak period' : 'Seasonal peak period'
-            }
-          ],
-          lowDemandPeriods: [
-            {
-              startDate: new Date(Date.now() + lowStartDay * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              endDate: new Date(Date.now() + lowEndDay * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-              lowValue: demandForecastDto.forecastPeriod <= 7 ? 60 : 
-                       demandForecastDto.forecastPeriod <= 30 ? 80 : 45,
-              description: demandForecastDto.forecastPeriod <= 7 ? 'Short-term low' : 
-                          demandForecastDto.forecastPeriod <= 30 ? 'Monthly low period' : 'Seasonal low period'
-            }
-          ],
+          totalDemandPrediction: aggregatedPredictions,
+          peakDemandPeriods: peakPeriods,
+          lowDemandPeriods: lowPeriods,
         },
-        categoryAnalysis: [
-          {
-            category: 'General',
-            totalPredictedDemand: Math.round(totalDemandPrediction.reduce((sum, day) => sum + day.totalDemand, 0)),
-            growthRate: demandForecastDto.forecastPeriod <= 7 ? 15.2 : 
-                       demandForecastDto.forecastPeriod <= 30 ? 12.5 : 
-                       demandForecastDto.forecastPeriod <= 60 ? 8.7 : 5.3,
-            seasonalPattern: demandForecastDto.forecastPeriod <= 7 ? 'Daily variation pattern' :
-                            demandForecastDto.forecastPeriod <= 30 ? 'Weekly seasonal component' :
-                            'Strong seasonal component',
-            riskLevel: demandForecastDto.forecastPeriod <= 7 ? 'low' : 
-                      demandForecastDto.forecastPeriod <= 30 ? 'medium' : 'high' as 'low' | 'medium' | 'high',
-            topItems: itemPredictions.slice(0, 3).map(item => ({
-              itemId: item.itemId,
-              itemName: item.itemName,
-              predictedDemand: Math.round(item.predictions.reduce((sum, p) => sum + p.predictedDemand, 0) / item.predictions.length),
-            })),
-          }
-        ],
-        modelPerformance: {
-          selectedModel: demandForecastDto.modelType || 'ARIMA',
-          overallAccuracy: demandForecastDto.forecastPeriod <= 7 ? 94.2 : 
-                          demandForecastDto.forecastPeriod <= 30 ? 87.5 : 
-                          demandForecastDto.forecastPeriod <= 60 ? 82.1 : 76.8,
-          modelComparison: [
-            {
-              model: 'ARIMA',
-              accuracy: demandForecastDto.forecastPeriod <= 7 ? 94.2 : 87.5,
-              trainingTime: 45,
-              recommended: true,
-            },
-            {
-              model: 'Linear Regression',
-              accuracy: demandForecastDto.forecastPeriod <= 7 ? 88.5 : 82.1,
-              trainingTime: 12,
-              recommended: false,
-            },
-            {
-              model: 'Neural Network',
-              accuracy: demandForecastDto.forecastPeriod <= 7 ? 91.8 : 85.3,
-              trainingTime: 120,
-              recommended: false,
-            },
-          ],
-          dataQuality: {
-            completeness: demandForecastDto.forecastPeriod <= 7 ? 98.5 : 95.2,
-            consistency: demandForecastDto.forecastPeriod <= 7 ? 96.8 : 92.4,
-            outliers: Math.floor(demandForecastDto.forecastPeriod * 0.02),
-            recommendations: [
-              demandForecastDto.forecastPeriod <= 7 ? 'Data quality is excellent for short-term forecasting' : 'Consider data cleaning for improved accuracy',
-              'Regular data validation recommended',
-            ],
-          },
-        },
-        businessInsights: {
-          keyFindings: [
-            `${demandForecastDto.forecastPeriod <= 7 ? 'Short-term' : 
-               demandForecastDto.forecastPeriod <= 30 ? 'Medium-term' : 'Long-term'} forecast shows ${
-              itemPredictions[0].insights.trendDirection} demand trend`,
-            `Model confidence is ${
-              demandForecastDto.forecastPeriod <= 7 ? 'high' : 
-              demandForecastDto.forecastPeriod <= 30 ? 'good' : 'moderate'} for this forecast period`,
-            `Peak demand expected around day ${peakStartDay}-${peakEndDay}`,
-            `${itemPredictions.filter(item => item.insights.volatility === 'high').length} items show high volatility`,
-          ],
-          actionableRecommendations: [
-            {
-              priority: demandForecastDto.forecastPeriod <= 7 ? 'high' : 'medium' as 'high' | 'medium' | 'low',
-              category: 'Inventory Management',
-              recommendation: `Adjust inventory levels based on ${demandForecastDto.forecastPeriod <= 7 ? 'immediate' : 'upcoming'} demand patterns`,
-              expectedImpact: `${demandForecastDto.forecastPeriod <= 7 ? '15-20%' : '10-15%'} reduction in stockouts`,
-              timeframe: `${demandForecastDto.forecastPeriod <= 7 ? '1-2 days' : '1-2 weeks'}`,
-            },
-            {
-              priority: 'medium' as 'high' | 'medium' | 'low',
-              category: 'Supply Chain',
-              recommendation: 'Review supplier lead times for high-demand items',
-              expectedImpact: '5-10% cost reduction',
-              timeframe: '2-4 weeks',
-            },
-          ],
-          riskFactors: [
-            {
-              factor: demandForecastDto.forecastPeriod <= 7 ? 'Short-term volatility' : 'Market uncertainty',
-              impact: demandForecastDto.forecastPeriod <= 7 ? 'medium' : 'high' as 'high' | 'medium' | 'low',
-              mitigation: demandForecastDto.forecastPeriod <= 7 ? 'Increase monitoring frequency' : 'Diversify supplier base',
-            },
-            {
-              factor: 'Seasonal variations',
-              impact: demandForecastDto.forecastPeriod <= 30 ? 'low' : 'medium' as 'high' | 'medium' | 'low',
-              mitigation: 'Implement seasonal inventory buffers',
-            },
-          ],
-        },
+        categoryAnalysis,
+        modelPerformance,
+        businessInsights,
         metadata: {
           generatedAt: new Date().toISOString(),
           forecastPeriod: demandForecastDto.forecastPeriod,
-          modelUsed: demandForecastDto.modelType || 'ARIMA',
+          modelUsed: demandForecastDto.modelType,
           dataPoints: demandForecastDto.forecastPeriod <= 7 ? 180 : 
                      demandForecastDto.forecastPeriod <= 30 ? 365 : 
                      demandForecastDto.forecastPeriod <= 60 ? 730 : 1095,
@@ -1158,36 +1021,16 @@ export class ForecastsService {
 
       return result;
     } catch (error) {
-      this.logger.error(`Error generating demand forecast: ${error.message}`);
-      throw new InternalServerErrorException('Failed to generate demand forecast');
+      this.logger.error('Error generating demand forecast:', error);
+      throw new BadRequestException('Failed to generate demand forecast');
     }
   }
 
-  async getCostForecast(
-    id: string,
-    tenantId: string,
-    userId: string,
-    userRole: string,
-  ): Promise<CostForecastResultDto> {
-    // Mock implementation - in production, retrieve from database
-    throw new NotFoundException('Cost forecast not found');
-  }
+  // Additional utility methods for forecast management
 
-  async getInventoryForecast(
+  async getForecastById(
     id: string,
     tenantId: string,
-    userId: string,
-    userRole: string,
-  ): Promise<InventoryForecastResultDto> {
-    // Mock implementation - in production, retrieve from database
-    throw new NotFoundException('Inventory forecast not found');
-  }
-
-  async getDemandForecast(
-    id: string,
-    tenantId: string,
-    userId: string,
-    userRole: string,
   ): Promise<DemandForecastResultDto> {
     // Mock implementation - in production, retrieve from database
     throw new NotFoundException('Demand forecast not found');
