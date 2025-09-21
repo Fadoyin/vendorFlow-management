@@ -1,0 +1,62 @@
+📦 VENDORFLOW DEPLOYMENT - ESSENTIAL FILES LIST
+================================================
+
+When deploying VendorFlow to another computer, copy these files:
+
+🔧 CORE CONFIGURATION (Required):
+docker-compose.yml
+env.example
+package.json
+turbo.json
+
+📱 APPLICATION CODE (Required):
+apps/frontend/src/                    (entire folder)
+apps/frontend/public/                 (entire folder)
+apps/frontend/package.json
+apps/frontend/Dockerfile.dev
+apps/frontend/next.config.js
+apps/frontend/tailwind.config.js
+apps/frontend/postcss.config.js
+
+apps/backend/src/                     (entire folder)
+apps/backend/package.json
+apps/backend/Dockerfile.dev
+
+apps/ml-service/app/                  (entire folder)
+apps/ml-service/main.py
+apps/ml-service/requirements.txt
+apps/ml-service/Dockerfile.dev
+
+packages/                             (entire folder)
+
+🚀 DEPLOYMENT SCRIPTS (Recommended):
+quick-deploy.sh
+quick-deploy.bat
+DOCKER_DEPLOYMENT_GUIDE.md
+README_DEPLOYMENT.md
+
+📋 SETUP STEPS:
+1. Copy all files above to target computer
+2. Create .env file: cp env.example .env
+3. Edit .env file (change JWT_SECRET)
+4. Run: docker-compose up -d
+5. Access: http://localhost:3005
+
+💾 TOTAL SIZE: ~30-50MB (without node_modules)
+
+❌ DO NOT COPY:
+node_modules/                         (will be installed by Docker)
+.next/                               (build artifacts)
+dist/                                (build artifacts)
+.turbo/                              (cache files)
+.git/                                (git history)
+*.log                                (log files)
+
+🎯 QUICK COMMANDS:
+# On source computer - create package:
+./create-deployment-package.sh
+
+# On target computer - deploy:
+tar -xzf vendorflow-*.tar.gz
+cd vendorflow-*
+./quick-deploy.sh 
