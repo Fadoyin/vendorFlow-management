@@ -739,6 +739,10 @@ export default function InventoryManagement() {
   const [showRestockModal, setShowRestockModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+  const [totalPages, setTotalPages] = useState(0)
 
   const [isClient, setIsClient] = useState(false)
 
@@ -751,24 +755,66 @@ export default function InventoryManagement() {
     loadInventoryData()
   }, [])
 
+  // Separate effect for data loading with pagination dependencies
+  useEffect(() => {
+    if (isClient) {
+      loadInventoryData()
+    }
+  }, [isClient, searchTerm, selectedCategory, stockFilter, currentPage, pageSize])
+
   const loadInventoryData = async () => {
     try {
       setLoading(true)
       setError('')
       
       console.log('🔄 Loading inventory data...')
-      const response = await inventoryApi.getAll()
+      
+      // Build API parameters with pagination and filters
+      const params: any = {
+        page: currentPage,
+        limit: pageSize
+      }
+      
+      if (searchTerm.trim()) {
+        params.search = searchTerm.trim()
+      }
+      
+      if (selectedCategory !== 'all') {
+        params.category = selectedCategory
+      }
+      
+      if (stockFilter !== 'all') {
+        if (stockFilter === 'low') {
+          params.lowStock = true
+        } else if (stockFilter === 'out') {
+          params.outOfStock = true
+        }
+      }
+      
+      console.log('📦 API parameters:', params)
+      const response = await inventoryApi.getAll(params)
+      const responseData = response?.data as any
       console.log('📦 API Response:', response)
       console.log('📦 Response data:', response?.data)
-      console.log('📦 Items array:', response?.data?.items)
-      console.log('📦 Items length:', response?.data?.items?.length)
+      console.log('📦 Items array:', responseData?.items)
+      console.log('📦 Items length:', responseData?.items?.length)
+      
+      // Add check for deleted items in response
+      if (responseData?.items && Array.isArray(responseData.items)) {
+        const deletedItems = responseData.items.filter((item: any) => item.isDeleted === true)
+        if (deletedItems.length > 0) {
+          console.warn('⚠️ Found deleted items in response that should be filtered:', deletedItems.map((item: any) => ({ id: item._id, name: item.name, isDeleted: item.isDeleted })))
+        } else {
+          console.log('✅ No deleted items found in response - filtering is working correctly')
+        }
+      }
       
       // Backend returns { items: [], total: number }
-      if (response?.data?.items && Array.isArray(response.data.items)) {
-        console.log(`✅ Found ${response.data.items.length} items`)
-        console.log('📦 Raw items:', response.data.items)
+      if (responseData?.items && Array.isArray(responseData.items)) {
+        console.log(`✅ Found ${responseData.items.length} items`)
+        console.log('📦 Raw items:', responseData.items)
         
-        const items = response.data.items.map((item: any) => ({
+        const items = responseData.items.map((item: any) => ({
           _id: item._id,
           name: item.name || 'Unknown Item',
           sku: item.sku || 'N/A',
@@ -813,13 +859,19 @@ export default function InventoryManagement() {
 
         console.log(`📊 Processed: ${items.length} items, $${totalValue} total value`)
 
+        const total = responseData.total || items.length
         setInventoryData({
           items,
-          total: response.data.total || items.length,
+          total,
           totalValue,
           lowStockCount,
           outOfStockCount,
         })
+        
+        // Update pagination
+        setTotalPages(Math.ceil(total / pageSize))
+        
+        console.log(`📊 Pagination: page ${currentPage}/${Math.ceil(total / pageSize)}, showing ${items.length} of ${total} items`)
       } else {
         console.log('❌ Invalid API response structure:', response)
         setError('Invalid inventory data received from server')
@@ -830,6 +882,32 @@ export default function InventoryManagement() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize)
+    setCurrentPage(1) // Reset to first page when changing page size
+  }
+
+  // Filter handlers that reset pagination
+  const handleSearchChange = (term: string) => {
+    setSearchTerm(term)
+    setCurrentPage(1)
+  }
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category)
+    setCurrentPage(1)
+  }
+
+  const handleStockFilterChange = (filter: string) => {
+    setStockFilter(filter)
+    setCurrentPage(1)
   }
 
   const handleEdit = (item: InventoryItem) => {
@@ -851,17 +929,38 @@ export default function InventoryManagement() {
     if (!selectedItem) return
     
     try {
+      console.log('🗑️ Deleting item:', selectedItem._id, selectedItem.name)
+      
       const response = await inventoryApi.delete(selectedItem._id)
-      if (response.data !== undefined || response.error === undefined) { // Check for successful response
+      console.log('🗑️ Delete response:', response)
+      
+      // More robust success check  
+      const isSuccess = !response.error && (response.data !== undefined || (response as any).status === 200 || (response as any).status === 204)
+      
+      if (isSuccess) {
+        console.log('✅ Delete successful, refreshing inventory list...')
         toast.success('Item deleted successfully!')
-        loadInventoryData() // Refresh the list
+        
+        // First, optimistically remove the item from local state
+        setInventoryData(prev => ({
+          ...prev,
+          items: prev.items.filter(item => item._id !== selectedItem._id),
+          total: prev.total - 1
+        }))
+        
+        // Then refresh from server to ensure consistency
+        await new Promise(resolve => setTimeout(resolve, 100)) // Small delay to ensure backend completes
+        await loadInventoryData()
+        
         setShowDeleteModal(false)
         setSelectedItem(null)
-      } else if (response.error) {
-        toast.error(`Error: ${response.error}`)
+        console.log('✅ Inventory list refreshed after delete')
+      } else {
+        console.error('❌ Delete failed:', response.error)
+        toast.error(`Error: ${response.error || 'Failed to delete item'}`)
       }
     } catch (error) {
-      console.error('Error deleting item:', error)
+      console.error('❌ Error deleting item:', error)
       toast.error('Failed to delete item. Please try again.')
     }
   }
@@ -1079,7 +1178,7 @@ export default function InventoryManagement() {
                   type="text"
                   placeholder="Search inventory..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -1091,7 +1190,7 @@ export default function InventoryManagement() {
               
               <select 
                 value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
+                onChange={(e) => handleCategoryChange(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Categories</option>
@@ -1103,12 +1202,23 @@ export default function InventoryManagement() {
               
               <select 
                 value={stockFilter}
-                onChange={(e) => setStockFilter(e.target.value)}
+                onChange={(e) => handleStockFilterChange(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Stock Levels</option>
                 <option value="low">Low Stock</option>
                 <option value="out">Out of Stock</option>
+              </select>
+
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={10}>10 per page</option>
+                <option value={25}>25 per page</option>
+                <option value={50}>50 per page</option>
+                <option value={100}>100 per page</option>
               </select>
             </div>
             
@@ -1200,6 +1310,65 @@ export default function InventoryManagement() {
             <div className="text-center py-12">
               <div className="text-gray-500 text-lg">No inventory items found</div>
               <p className="text-gray-400 mt-2">Try adjusting your search or filters</p>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              <div className="flex items-center text-sm text-gray-500">
+                Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, inventoryData.total)} of {inventoryData.total} items
+                {searchTerm && ` - filtered by "${searchTerm}"`}
+                {selectedCategory !== 'all' && ` - category: ${selectedCategory}`}
+                {stockFilter !== 'all' && ` - stock: ${stockFilter}`}
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-2 text-sm border rounded-md ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>

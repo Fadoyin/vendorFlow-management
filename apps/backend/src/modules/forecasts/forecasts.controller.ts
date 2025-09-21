@@ -278,12 +278,10 @@ export class ForecastsController {
   async getCostForecast(
     @Param('id') id: string,
     @Request() req: any,
-  ): Promise<CostForecastResultDto> {
-    return this.forecastsService.getCostForecast(
+  ): Promise<any> {
+    return this.forecastsService.getForecastById(
       id,
       req.user.tenantId,
-      req.user.userId,
-      req.user.role,
     );
   }
 
@@ -297,12 +295,10 @@ export class ForecastsController {
   async getInventoryForecast(
     @Param('id') id: string,
     @Request() req: any,
-  ): Promise<InventoryForecastResultDto> {
-    return this.forecastsService.getInventoryForecast(
+  ): Promise<any> {
+    return this.forecastsService.getForecastById(
       id,
       req.user.tenantId,
-      req.user.userId,
-      req.user.role,
     );
   }
 
@@ -316,12 +312,10 @@ export class ForecastsController {
   async getDemandForecast(
     @Param('id') id: string,
     @Request() req: any,
-  ): Promise<DemandForecastResultDto> {
-    return this.forecastsService.getDemandForecast(
+  ): Promise<any> {
+    return this.forecastsService.getForecastById(
       id,
       req.user.tenantId,
-      req.user.userId,
-      req.user.role,
     );
   }
 }

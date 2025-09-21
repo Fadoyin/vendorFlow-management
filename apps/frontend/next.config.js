@@ -9,12 +9,14 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // Disable static generation to avoid prerendering errors
-  output: 'standalone',
+  // Only use standalone output in production
+  ...(process.env.NODE_ENV === 'production' && { output: 'standalone' }),
   trailingSlash: false,
   // Force dynamic rendering for all pages
   experimental: {
     missingSuspenseWithCSRBailout: false,
+    // Fix for Docker CSS processing
+    esmExternals: false,
   },
   // App Router is enabled by default in Next.js 13+
   // Help prevent hydration mismatches
@@ -28,6 +30,26 @@ const nextConfig = {
   },
   env: {
     NEXT_PUBLIC_STORAGE_KEY: process.env.NEXT_PUBLIC_STORAGE_KEY || 'vendorflow-secure-key-change-in-production',
+  },
+  // Fix webpack configuration for Docker
+  webpack: (config, { isServer }) => {
+    // Fix CSS processing in Docker
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+    };
+    
+    // Ensure proper CSS processing
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        os: false,
+      };
+    }
+    
+    return config;
   },
   async headers() {
     return [

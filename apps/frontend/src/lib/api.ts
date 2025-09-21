@@ -45,7 +45,7 @@ class ApiService {
   private refreshPromise: Promise<void> | null = null;
 
   constructor() {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3004';
     // Ensure we don't double-add /api if it's already in the URL
     this.baseURL = baseUrl.endsWith('/api') ? baseUrl : baseUrl + '/api';
     
@@ -1186,6 +1186,25 @@ export const vendorApi = {
     return apiService.request(url);
   },
 
+  // Add individual order methods for vendors
+  getOrderById: async (id: string): Promise<ApiResponse<any>> => {
+    return apiService.request(`vendors/orders/${id}`);
+  },
+
+  updateOrder: async (id: string, data: any): Promise<ApiResponse<any>> => {
+    return apiService.request(`vendors/orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateOrderStatus: async (id: string, status: string): Promise<ApiResponse<any>> => {
+    return apiService.request(`vendors/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+
   getForecast: async (params: { period?: string; metric?: string } = {}): Promise<ApiResponse<any>> => {
     const searchParams = new URLSearchParams();
     
@@ -1217,9 +1236,11 @@ export const vendorApi = {
   getPaymentTransactions: async (params: { page?: number; limit?: number; status?: string } = {}): Promise<ApiResponse<any>> => {
     const searchParams = new URLSearchParams();
     
-    if (params.page) searchParams.append('page', params.page.toString());
-    if (params.limit) searchParams.append('limit', params.limit.toString());
-    if (params.status) searchParams.append('status', params.status);
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+        searchParams.append(key, params[key].toString());
+      }
+    });
 
     const queryString = searchParams.toString();
     const url = queryString ? `vendors/payments/transactions?${queryString}` : 'vendors/payments/transactions';

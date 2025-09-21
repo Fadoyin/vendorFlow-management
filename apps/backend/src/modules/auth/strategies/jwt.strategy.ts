@@ -22,12 +22,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Invalid token payload - missing required fields');
     }
 
-    return {
+    const userContext = {
       sub: payload.sub,
       email: payload.email,
       role: payload.role,
       tenantId: payload.tenantId,
       companyName: payload.companyName,
+      vendorProfile: payload.vendorProfile,
+      supplierProfile: payload.supplierProfile,
     };
+
+    console.log(`JWT Strategy validate for ${payload.email}: vendorProfile=${userContext.vendorProfile}, supplierProfile=${userContext.supplierProfile}`);
+    
+    return userContext;
   }
 }

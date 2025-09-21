@@ -1,0 +1,517 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Markdown Preview</title>
+      <style>
+        body {
+          font-family: sans-serif;
+          padding: 40px;
+          line-height: 1.6;
+          background: #fdfdfd;
+          color: #333;
+        }
+        pre {
+          background: #f4f4f4;
+          padding: 10px;
+          border-radius: 5px;
+          overflow-x: auto;
+        }
+        code {
+          font-family: monospace;
+          background: #eee;
+          padding: 2px 4px;
+        }
+        table {
+          border-collapse: collapse;
+          width: 100%;
+          margin-top: 20px;
+        }
+        th, td {
+          border: 1px solid #ccc;
+          padding: 8px 12px;
+          text-align: left;
+        }
+        th {
+          background-color: #f2f2f2;
+          font-weight: bold;
+        }
+      </style>
+    </head>
+    <body>
+      <h1>TestSprite AI Testing Report (MCP)</h1>
+<hr>
+<h2>1️⃣ Document Metadata</h2>
+<ul>
+<li><strong>Project Name:</strong> vendorFlow-management</li>
+<li><strong>Version:</strong> 1.0.0</li>
+<li><strong>Date:</strong> 2025-01-20</li>
+<li><strong>Prepared by:</strong> TestSprite AI Team</li>
+</ul>
+<hr>
+<h2>2️⃣ Executive Summary</h2>
+<p><strong>🚨 CRITICAL ISSUES IDENTIFIED</strong></p>
+<p>TestSprite has completed a comprehensive analysis of the VendorFlow platform and identified <strong>critical backend service failures</strong> preventing core functionality. All 10 test cases failed due to systematic backend authentication and API endpoint issues.</p>
+<p><strong>Key Findings:</strong></p>
+<ul>
+<li>❌ <strong>0/10 tests passed</strong> - Complete system failure</li>
+<li>🔴 <strong>Backend Authentication Service Down</strong> - 500 Internal Server Errors</li>
+<li>🔴 <strong>API Endpoints Not Accessible</strong> - Connection refused errors</li>
+<li>🔴 <strong>Frontend-Backend Integration Broken</strong> - No successful data flow</li>
+</ul>
+<hr>
+<h2>3️⃣ Requirement Validation Summary</h2>
+<h3>Requirement: Authentication and Authorization</h3>
+<ul>
+<li><strong>Description:</strong> Role-based authentication system with JWT tokens and multi-factor authentication support for Admin, Vendor, and Supplier roles.</li>
+</ul>
+<h4>Test 1: Role-Based Authentication</h4>
+<ul>
+<li><strong>Test ID:</strong> TC001</li>
+<li><strong>Test Name:</strong> test role based authentication and authorization</li>
+<li><strong>Test Code:</strong> <a href="./TC001_test_role_based_authentication_and_authorization.py">TC001_test_role_based_authentication_and_authorization.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>500 Server Error: Internal Server Error for url: http://localhost:3000/auth/login
+RuntimeError: Login failed for user 'admin_user': 500 Server Error
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/8e20c78b-7fab-4672-8863-0c5bcf1d7933">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Backend authentication service is completely non-functional. The /auth/login endpoint returns 500 Internal Server Error, indicating critical server-side issues preventing any user authentication.</li>
+</ul>
+<hr>
+<h3>Requirement: User Management</h3>
+<ul>
+<li><strong>Description:</strong> Complete CRUD operations for user management including creating, reading, updating, and deleting users with role assignments.</li>
+</ul>
+<h4>Test 2: User Management CRUD Operations</h4>
+<ul>
+<li><strong>Test ID:</strong> TC002</li>
+<li><strong>Test Name:</strong> test user management crud operations</li>
+<li><strong>Test Code:</strong> <a href="./TC002_test_user_management_crud_operations.py">TC002_test_user_management_crud_operations.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>AssertionError: Authentication failed: Proxy server error: connect ECONNREFUSED 127.0.0.1:3000
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/3f2e6b8e-f648-466d-92df-81aa97629126">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Backend service at localhost:3000 is not accessible. Connection refused errors indicate the service is either not running or not properly configured.</li>
+</ul>
+<hr>
+<h3>Requirement: Vendor and Supplier Management</h3>
+<ul>
+<li><strong>Description:</strong> Registration, profile management, contracts, and vendor-supplier relationship linking functionality.</li>
+</ul>
+<h4>Test 3: Vendor and Supplier Registration</h4>
+<ul>
+<li><strong>Test ID:</strong> TC003</li>
+<li><strong>Test Name:</strong> test vendor and supplier registration and profile management</li>
+<li><strong>Test Code:</strong> <a href="./TC003_test_vendor_and_supplier_registration_and_profile_management.py">TC003_test_vendor_and_supplier_registration_and_profile_management.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>AssertionError: Vendor registration failed: &lt;!DOCTYPE html&gt;...Page Not Found...
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/e83a3743-e195-452b-810c-f9bc3e87d729">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Vendor registration endpoints do not exist or are misconfigured. API requests return HTML &quot;Page Not Found&quot; responses instead of proper API responses.</li>
+</ul>
+<hr>
+<h3>Requirement: Inventory Management</h3>
+<ul>
+<li><strong>Description:</strong> Inventory CRUD operations, stock level tracking, and real-time inventory reporting.</li>
+</ul>
+<h4>Test 4: Inventory Management and Stock Tracking</h4>
+<ul>
+<li><strong>Test ID:</strong> TC004</li>
+<li><strong>Test Name:</strong> test inventory management and stock level tracking</li>
+<li><strong>Test Code:</strong> <a href="./TC004_test_inventory_management_and_stock_level_tracking.py">TC004_test_inventory_management_and_stock_level_tracking.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>Exception: Authentication failed: 500 Server Error: Internal Server Error for url: http://localhost:3000/auth/login
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/95a09c56-c3ad-423d-8517-c757eba0d682">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Cannot test inventory functionality due to authentication service failure. Backend authentication must be fixed before inventory operations can be validated.</li>
+</ul>
+<hr>
+<h3>Requirement: Order Management</h3>
+<ul>
+<li><strong>Description:</strong> Order creation, purchase order management, order tracking, and order history retrieval.</li>
+</ul>
+<h4>Test 5: Order Creation and Tracking</h4>
+<ul>
+<li><strong>Test ID:</strong> TC005</li>
+<li><strong>Test Name:</strong> test order creation and tracking</li>
+<li><strong>Test Code:</strong> <a href="./TC005_test_order_creation_and_tracking.py">TC005_test_order_creation_and_tracking.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>AssertionError: Login failed for user testvendor: 500 Server Error: Internal Server Error for url: http://localhost:3000/auth/login
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/28c2ba63-c040-4b19-8783-3ab9993ff577">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Order management testing blocked by authentication service failures. All order operations require successful authentication which is currently broken.</li>
+</ul>
+<hr>
+<h3>Requirement: Payment Processing</h3>
+<ul>
+<li><strong>Description:</strong> Stripe payment integration, subscription plan activation, and payment history tracking.</li>
+</ul>
+<h4>Test 6: Stripe Payment Processing</h4>
+<ul>
+<li><strong>Test ID:</strong> TC006</li>
+<li><strong>Test Name:</strong> test stripe payment processing and subscription management</li>
+<li><strong>Test Code:</strong> <a href="./TC006_test_stripe_payment_processing_and_subscription_management.py">TC006_test_stripe_payment_processing_and_subscription_management.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>requests.exceptions.HTTPError: 500 Server Error: Internal Server Error for url: http://localhost:3000/suppliers
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/e46444a7-38cb-4035-af53-c11f99cadd19">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Payment processing tests fail due to backend supplier service malfunction. The /suppliers endpoint returns 500 errors, indicating critical backend issues.</li>
+</ul>
+<hr>
+<h3>Requirement: ML Forecasting</h3>
+<ul>
+<li><strong>Description:</strong> Machine learning forecasting for demand, inventory, and cost predictions with AWS Forecast integration.</li>
+</ul>
+<h4>Test 7: ML Forecasting and AWS Integration</h4>
+<ul>
+<li><strong>Test ID:</strong> TC007</li>
+<li><strong>Test Name:</strong> test ml forecasting and aws forecast integration</li>
+<li><strong>Test Code:</strong> <a href="./TC007_test_ml_forecasting_and_aws_forecast_integration.py">TC007_test_ml_forecasting_and_aws_forecast_integration.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>AssertionError: Authentication failed: {&quot;message&quot;:&quot;Internal server error&quot;,&quot;error&quot;:&quot;fetch failed&quot;}
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/55cbf38a-8036-4122-9704-7ab444610202">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> ML forecasting service cannot authenticate due to backend fetch failures. AWS integration testing is blocked by authentication issues.</li>
+</ul>
+<hr>
+<h3>Requirement: Notification System</h3>
+<ul>
+<li><strong>Description:</strong> Email and system notifications with user preferences and customizable settings.</li>
+</ul>
+<h4>Test 8: Notification Delivery and Preferences</h4>
+<ul>
+<li><strong>Test ID:</strong> TC008</li>
+<li><strong>Test Name:</strong> test notification delivery and preferences</li>
+<li><strong>Test Code:</strong> <a href="./TC008_test_notification_delivery_and_preferences.py">TC008_test_notification_delivery_and_preferences.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>RuntimeError: Login failed: 500 Server Error: Internal Server Error for url: http://localhost:3005/api/auth/login
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/ca1d8c2f-7638-4d00-b325-12f9f44e1d16">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> Notification service authentication fails with 500 errors on port 3005. Frontend-backend communication is broken.</li>
+</ul>
+<hr>
+<h3>Requirement: Reporting and Analytics</h3>
+<ul>
+<li><strong>Description:</strong> Dashboard KPIs, transaction monitoring, activity logs, and custom reports for different user roles.</li>
+</ul>
+<h4>Test 9: Reporting and Analytics Dashboards</h4>
+<ul>
+<li><strong>Test ID:</strong> TC009</li>
+<li><strong>Test Name:</strong> test reporting and analytics dashboards</li>
+<li><strong>Test Code:</strong> <a href="./TC009_test_reporting_and_analytics_dashboards.py">TC009_test_reporting_and_analytics_dashboards.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>AssertionError: Issues found during dashboard tests:
+[admin] Authentication error: Authentication failed for user admin_test: 500 Server Error
+[vendor] Authentication error: Authentication failed for user vendor_test: 500 Server Error  
+[supplier] Authentication error: Authentication failed for user supplier_test: 500 Server Error
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/e5854af0-dfdf-40f2-b43f-ab0d408c1be7">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> All user roles (admin, vendor, supplier) fail authentication, preventing access to any dashboard or analytics features.</li>
+</ul>
+<hr>
+<h3>Requirement: File Management</h3>
+<ul>
+<li><strong>Description:</strong> File upload functionality with AWS S3 storage integration and file processing capabilities.</li>
+</ul>
+<h4>Test 10: File Upload and AWS S3 Integration</h4>
+<ul>
+<li><strong>Test ID:</strong> TC010</li>
+<li><strong>Test Name:</strong> test file upload and aws s3 integration</li>
+<li><strong>Test Code:</strong> <a href="./TC010_test_file_upload_and_aws_s3_integration.py">TC010_test_file_upload_and_aws_s3_integration.py</a></li>
+<li><strong>Test Error:</strong></li>
+</ul>
+<pre><code>AssertionError: Auth failed: Proxy server error: connect ECONNREFUSED 127.0.0.1:3000
+</code></pre>
+<ul>
+<li><strong>Test Visualization and Result:</strong> <a href="https://www.testsprite.com/dashboard/mcp/tests/eedfa4fe-b77e-42a6-a4e6-99b96b2002a5/7bbf2d95-b0dd-4620-bfad-9a06b827bcbc">View Details</a></li>
+<li><strong>Status:</strong> ❌ Failed</li>
+<li><strong>Severity:</strong> HIGH</li>
+<li><strong>Analysis / Findings:</strong> File upload service is inaccessible due to backend connection failures. Proxy configuration issues prevent API access.</li>
+</ul>
+<hr>
+<h2>4️⃣ Coverage &amp; Matching Metrics</h2>
+<ul>
+<li><strong>0% of tests passed</strong></li>
+<li><strong>100% of tests failed</strong></li>
+<li><strong>10 critical backend issues identified</strong></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Total Tests</th>
+<th>✅ Passed</th>
+<th>⚠️ Partial</th>
+<th>❌ Failed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Authentication</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>User Management</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Vendor/Supplier Mgmt</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Inventory Management</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Order Management</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Payment Processing</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>ML Forecasting</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Notifications</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Reporting/Analytics</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td>File Management</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>TOTAL</strong></td>
+<td><strong>10</strong></td>
+<td><strong>0</strong></td>
+<td><strong>0</strong></td>
+<td><strong>10</strong></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>5️⃣ Critical Issues Analysis</h2>
+<h3>🔴 <strong>Primary Root Cause: Backend Service Failure</strong></h3>
+<p><strong>Issue:</strong> Complete backend authentication service failure</p>
+<ul>
+<li><strong>Error Pattern:</strong> 500 Internal Server Error on /auth/login</li>
+<li><strong>Impact:</strong> Blocks all functionality requiring authentication</li>
+<li><strong>Affected Services:</strong> All modules (100% system failure)</li>
+</ul>
+<h3>🔴 <strong>Secondary Issues:</strong></h3>
+<ol>
+<li>
+<p><strong>Port Configuration Mismatch</strong></p>
+<ul>
+<li>Frontend expects backend on port 3004</li>
+<li>Backend attempting to run on port 3000</li>
+<li>Docker compose configuration inconsistency</li>
+</ul>
+</li>
+<li>
+<p><strong>API Endpoint Routing Issues</strong></p>
+<ul>
+<li>Vendor registration endpoints return HTML 404 pages</li>
+<li>Missing API route handlers</li>
+<li>Frontend-backend API contract mismatch</li>
+</ul>
+</li>
+<li>
+<p><strong>TypeScript Compilation Errors</strong></p>
+<ul>
+<li>Backend failing to compile due to missing methods</li>
+<li>Type mismatches in forecasting service</li>
+<li>Prevents proper service startup</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2>6️⃣ Immediate Action Required</h2>
+<h3><strong>🚨 CRITICAL FIXES (Must be completed before any functionality works):</strong></h3>
+<ol>
+<li>
+<p><strong>Fix Backend TypeScript Compilation</strong></p>
+<ul>
+<li>Resolve all TypeScript errors in forecasting module</li>
+<li>Add missing service methods</li>
+<li>Fix schema property mismatches</li>
+</ul>
+</li>
+<li>
+<p><strong>Resolve Port Configuration</strong></p>
+<ul>
+<li>Align frontend API calls with backend port (3000 vs 3004)</li>
+<li>Update environment variables consistently</li>
+<li>Fix Docker compose port mapping</li>
+</ul>
+</li>
+<li>
+<p><strong>Fix Authentication Service</strong></p>
+<ul>
+<li>Debug 500 Internal Server Error in /auth/login</li>
+<li>Verify database connectivity</li>
+<li>Check JWT token generation logic</li>
+</ul>
+</li>
+<li>
+<p><strong>Implement Missing API Endpoints</strong></p>
+<ul>
+<li>Add vendor registration endpoints</li>
+<li>Implement supplier management APIs</li>
+<li>Fix routing configuration</li>
+</ul>
+</li>
+</ol>
+<h3><strong>📋 RECOMMENDED FIXES:</strong></h3>
+<ol>
+<li>
+<p><strong>Environment Configuration</strong></p>
+<pre><code class="language-bash"># Fix frontend API base URL
+NEXT_PUBLIC_API_URL=http://localhost:3000
+
+# Ensure backend runs on consistent port
+PORT=3000
+</code></pre>
+</li>
+<li>
+<p><strong>Backend Service Health Check</strong></p>
+<pre><code class="language-bash"># Verify backend compilation
+cd apps/backend &amp;&amp; npm run build
+
+# Check service startup
+npm run start:dev
+</code></pre>
+</li>
+<li>
+<p><strong>Database Connection Validation</strong></p>
+<ul>
+<li>Verify MongoDB Atlas connectivity</li>
+<li>Test Redis connection</li>
+<li>Validate environment variables</li>
+</ul>
+</li>
+</ol>
+<hr>
+<h2>7️⃣ Business Impact Assessment</h2>
+<h3><strong>🔴 CRITICAL BUSINESS IMPACT:</strong></h3>
+<ul>
+<li><strong>Revenue Impact:</strong> 100% - Platform completely non-functional</li>
+<li><strong>User Experience:</strong> 0% - No features accessible</li>
+<li><strong>Data Security:</strong> At Risk - Authentication system down</li>
+<li><strong>Operational Efficiency:</strong> 0% - No business processes can be completed</li>
+</ul>
+<h3><strong>💰 ESTIMATED LOSSES:</strong></h3>
+<ul>
+<li><strong>Daily Revenue Loss:</strong> 100% of expected revenue</li>
+<li><strong>Customer Satisfaction:</strong> Critical impact on user trust</li>
+<li><strong>Development Velocity:</strong> Blocked until core issues resolved</li>
+</ul>
+<hr>
+<h2>8️⃣ Recovery Recommendations</h2>
+<h3><strong>Phase 1: Emergency Recovery (24-48 hours)</strong></h3>
+<ol>
+<li>Fix TypeScript compilation errors</li>
+<li>Resolve authentication service 500 errors</li>
+<li>Align port configurations between services</li>
+<li>Implement basic API endpoints</li>
+</ol>
+<h3><strong>Phase 2: Core Functionality Restoration (1 week)</strong></h3>
+<ol>
+<li>Complete user management implementation</li>
+<li>Fix vendor/supplier registration flows</li>
+<li>Restore inventory and order management</li>
+<li>Implement payment processing endpoints</li>
+</ol>
+<h3><strong>Phase 3: Advanced Features (2 weeks)</strong></h3>
+<ol>
+<li>ML forecasting service integration</li>
+<li>Notification system implementation</li>
+<li>Reporting and analytics dashboards</li>
+<li>File upload and AWS S3 integration</li>
+</ol>
+<hr>
+<h2>9️⃣ Conclusion</h2>
+<p><strong>SYSTEM STATUS: 🔴 CRITICAL - COMPLETE SERVICE FAILURE</strong></p>
+<p>VendorFlow platform is currently <strong>completely non-functional</strong> due to systematic backend service failures. The authentication system is down, API endpoints are missing or misconfigured, and TypeScript compilation errors prevent proper service startup.</p>
+<p><strong>IMMEDIATE ACTION REQUIRED:</strong> All development efforts must focus on resolving the critical backend issues identified in this report before any user-facing features can function.</p>
+<p><strong>RECOMMENDATION:</strong> Implement emergency fixes for authentication service, resolve TypeScript errors, and align service configurations to restore basic platform functionality.</p>
+<hr>
+<p><em>This report was generated by TestSprite AI Testing Platform on January 20, 2025. For technical support or questions about this report, contact the TestSprite AI Team.</em></p>
+
+    </body>
+    </html>
+  

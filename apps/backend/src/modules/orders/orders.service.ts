@@ -38,6 +38,7 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    vendorProfile?: string,
   ): Promise<Order> {
     try {
       this.logger.log(`Creating order for tenant: ${tenantId}, user: ${userId}, role: ${userRole}`);
@@ -57,7 +58,8 @@ export class OrdersService {
       const order = new this.orderModel({
         tenantId: new Types.ObjectId(tenantId),
         orderId: createOrderDto.orderId,
-        vendorId: createOrderDto.vendorId ? new Types.ObjectId(createOrderDto.vendorId) : new Types.ObjectId(userId),
+        vendorId: createOrderDto.vendorId ? new Types.ObjectId(createOrderDto.vendorId) : 
+          (vendorProfile ? new Types.ObjectId(vendorProfile) : new Types.ObjectId(userId)),
         supplierId: createOrderDto.supplierId ? new Types.ObjectId(createOrderDto.supplierId) : undefined,
         status: createOrderDto.status || 'placed', // Use valid enum value
         orderDate: createOrderDto.orderDate ? new Date(createOrderDto.orderDate) : new Date(),
@@ -103,9 +105,11 @@ export class OrdersService {
     userId: string,
     userRole: string,
     options: QueryOptions,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<{ orders: Order[]; total: number; pagination: any }> {
     try {
-      this.logger.log(`Finding orders for tenant: ${tenantId}, role: ${userRole}`);
+      this.logger.log(`Finding orders for tenant: ${tenantId}, role: ${userRole}, userId: ${userId}, supplierProfile: ${supplierProfile}, vendorProfile: ${vendorProfile}`);
 
       // Base filter with tenant isolation
       const filter: any = {
@@ -114,14 +118,20 @@ export class OrdersService {
 
       // Role-based filtering
       if (userRole === 'vendor') {
-        filter.vendorId = new Types.ObjectId(userId);
+        // For vendors, use the vendorProfile ID instead of user ID
+        const vendorIdToUse = vendorProfile || userId;
+        filter.vendorId = new Types.ObjectId(vendorIdToUse);
+        this.logger.log(`Vendor filter applied: vendorId = ${vendorIdToUse} (from ${vendorProfile ? 'vendorProfile' : 'userId'})`);
       } else if (userRole === 'supplier') {
-        filter.supplierId = new Types.ObjectId(userId);
+        // For suppliers, use the supplierProfile ID instead of user ID
+        const supplierIdToUse = supplierProfile || userId;
+        filter.supplierId = new Types.ObjectId(supplierIdToUse);
+        this.logger.log(`Supplier filter applied: supplierId = ${supplierIdToUse} (from ${supplierProfile ? 'supplierProfile' : 'userId'})`);
       }
       // Admin sees all orders within tenant
 
       // Apply additional filters
-      if (options.status) {
+      if (options.status && options.status !== 'all') {
         filter.status = options.status;
       }
 
@@ -185,6 +195,8 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<any> {
     try {
       const filter: any = {
@@ -193,9 +205,11 @@ export class OrdersService {
 
       // Role-based filtering
       if (userRole === 'vendor') {
-        filter.vendorId = new Types.ObjectId(userId);
+        const vendorIdToUse = vendorProfile || userId;
+        filter.vendorId = new Types.ObjectId(vendorIdToUse);
       } else if (userRole === 'supplier') {
-        filter.supplierId = new Types.ObjectId(userId);
+        const supplierIdToUse = supplierProfile || userId;
+        filter.supplierId = new Types.ObjectId(supplierIdToUse);
       }
 
       // Get current date ranges for comparison
@@ -323,9 +337,10 @@ export class OrdersService {
     userId: string,
     userRole: string,
     options: Partial<QueryOptions>,
+    vendorProfile?: string,
   ): Promise<{ orders: Order[]; total: number; pagination: any }> {
     // Check permissions
-    if (userRole === 'vendor' && vendorId !== userId) {
+    if (userRole === 'vendor' && vendorId !== userId && vendorId !== vendorProfile) {
       throw new ForbiddenException('Cannot access other vendor orders');
     }
 
@@ -334,7 +349,7 @@ export class OrdersService {
       vendorId,
       page: options.page || 1,
       limit: options.limit || 20,
-    });
+    }, undefined, vendorProfile);
   }
 
   /**
@@ -346,9 +361,11 @@ export class OrdersService {
     userId: string,
     userRole: string,
     options: Partial<QueryOptions>,
+    supplierProfile?: string,
   ): Promise<{ orders: Order[]; total: number; pagination: any }> {
-    // Check permissions
-    if (userRole === 'supplier' && supplierId !== userId) {
+    // Check permissions - for suppliers, check against supplierProfile
+    const supplierIdToCheck = supplierProfile || userId;
+    if (userRole === 'supplier' && supplierId !== supplierIdToCheck) {
       throw new ForbiddenException('Cannot access other supplier orders');
     }
 
@@ -357,7 +374,7 @@ export class OrdersService {
       supplierId,
       page: options.page || 1,
       limit: options.limit || 20,
-    });
+    }, supplierProfile);
   }
 
   /**
@@ -368,6 +385,8 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<Order> {
     try {
       const filter: any = {
@@ -377,9 +396,11 @@ export class OrdersService {
 
       // Role-based filtering
       if (userRole === 'vendor') {
-        filter.vendorId = new Types.ObjectId(userId);
+        const vendorIdToUse = vendorProfile || userId;
+        filter.vendorId = new Types.ObjectId(vendorIdToUse);
       } else if (userRole === 'supplier') {
-        filter.supplierId = new Types.ObjectId(userId);
+        const supplierIdToUse = supplierProfile || userId;
+        filter.supplierId = new Types.ObjectId(supplierIdToUse);
       }
 
       const order = await this.orderModel
@@ -410,17 +431,25 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<Order> {
     try {
-      const order = await this.findOne(id, tenantId, userId, userRole);
+      const order = await this.findOne(id, tenantId, userId, userRole, supplierProfile, vendorProfile);
 
       // Check if user can modify this order
-      if (userRole === 'vendor' && order.vendorId?.toString() !== userId) {
-        throw new ForbiddenException('Cannot modify this order');
+      if (userRole === 'vendor') {
+        const vendorIdToUse = vendorProfile || userId;
+        if (order.vendorId?.toString() !== vendorIdToUse) {
+          throw new ForbiddenException('Cannot modify this order');
+        }
       }
 
-      if (userRole === 'supplier' && order.supplierId?.toString() !== userId) {
-        throw new ForbiddenException('Cannot modify this order');
+      if (userRole === 'supplier') {
+        const supplierIdToUse = supplierProfile || userId;
+        if (order.supplierId?.toString() !== supplierIdToUse) {
+          throw new ForbiddenException('Cannot modify this order');
+        }
       }
 
       // Recalculate totals if items are updated
@@ -472,9 +501,11 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<Order> {
     try {
-      const order = await this.findOne(id, tenantId, userId, userRole);
+      const order = await this.findOne(id, tenantId, userId, userRole, supplierProfile, vendorProfile);
 
       // Validate status transition
       const validStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled'];
@@ -522,9 +553,11 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<{ message: string }> {
     try {
-      const order = await this.findOne(id, tenantId, userId, userRole);
+      const order = await this.findOne(id, tenantId, userId, userRole, supplierProfile, vendorProfile);
 
       // Only admins can delete orders
       if (userRole !== 'admin') {
@@ -579,6 +612,8 @@ export class OrdersService {
     tenantId: string,
     userId: string,
     userRole: string,
+    supplierProfile?: string,
+    vendorProfile?: string,
   ): Promise<any> {
     try {
       const filter: any = {
@@ -587,9 +622,11 @@ export class OrdersService {
 
       // Role-based filtering
       if (userRole === 'vendor') {
-        filter.vendorId = new Types.ObjectId(userId);
+        const vendorIdToUse = vendorProfile || userId;
+        filter.vendorId = new Types.ObjectId(vendorIdToUse);
       } else if (userRole === 'supplier') {
-        filter.supplierId = new Types.ObjectId(userId);
+        const supplierIdToUse = supplierProfile || userId;
+        filter.supplierId = new Types.ObjectId(supplierIdToUse);
       }
 
       // Get current date ranges for comparison

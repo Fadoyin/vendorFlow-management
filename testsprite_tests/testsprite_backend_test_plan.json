@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "test role based authentication and authorization",
+    "description": "Verify that role-based authentication and authorization work correctly for Admin, Vendor, and Supplier roles using JWT tokens and multi-factor authentication."
+  },
+  {
+    "id": "TC002",
+    "title": "test user management crud operations",
+    "description": "Validate full CRUD operations for user management including creating, reading, updating, and deleting users with role assignments."
+  },
+  {
+    "id": "TC003",
+    "title": "test vendor and supplier registration and profile management",
+    "description": "Ensure vendors and suppliers can register, update their profiles, manage contracts, and link vendor-supplier relationships correctly."
+  },
+  {
+    "id": "TC004",
+    "title": "test inventory management and stock level tracking",
+    "description": "Test inventory CRUD operations, stock level tracking, and real-time inventory reporting functionalities."
+  },
+  {
+    "id": "TC005",
+    "title": "test order creation and tracking",
+    "description": "Verify order creation, purchase order management, order tracking, and order history retrieval for vendors and suppliers."
+  },
+  {
+    "id": "TC006",
+    "title": "test stripe payment processing and subscription management",
+    "description": "Validate payment processing through Stripe, subscription plan activation for suppliers, and payment history tracking."
+  },
+  {
+    "id": "TC007",
+    "title": "test ml forecasting and aws forecast integration",
+    "description": "Ensure machine learning forecasting for demand, inventory, and cost predictions operate accurately and integrate with AWS Forecast."
+  },
+  {
+    "id": "TC008",
+    "title": "test notification delivery and preferences",
+    "description": "Test email and system notifications delivery respecting user preferences and customizable notification settings."
+  },
+  {
+    "id": "TC009",
+    "title": "test reporting and analytics dashboards",
+    "description": "Verify that dashboards display correct KPIs, transaction monitoring, activity logs, and custom reports for different user roles."
+  },
+  {
+    "id": "TC010",
+    "title": "test file upload and aws s3 integration",
+    "description": "Validate file upload functionality, AWS S3 storage integration, and file processing capabilities."
+  }
+]

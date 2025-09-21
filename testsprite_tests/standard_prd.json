@@ -1,0 +1,203 @@
+{
+  "meta": {
+    "project": "VendorFlow Management",
+    "date": "2025-09-13",
+    "prepared_by": "Software Development Manager"
+  },
+  "product_overview": "VendorFlow Management is a cloud-based multi-tenant SaaS platform designed specifically for small-scale food manufacturers (vendors) and raw material suppliers. It facilitates vendor and supplier management, inventory tracking, and integrates advanced machine learning forecasting to optimize demand, stock levels, and pricing. The platform supports admin oversight, subscription billing, and comprehensive analytics for all roles.",
+  "core_goals": [
+    "Provide a unified platform to connect food manufacturers (vendors) with raw material suppliers efficiently.",
+    "Enable detailed vendor and supplier profile management with role-based secure authentication and authorization.",
+    "Integrate machine learning models for accurate demand, inventory, and cost forecasting to support decision-making.",
+    "Offer subscription-based billing and payment processing for suppliers through Stripe integration.",
+    "Deliver multi-tenant architecture ensuring data isolation with scalable cloud infrastructure on AWS.",
+    "Provide rich, role-based reporting, analytics dashboards, and notifications to keep users informed and facilitate operational efficiency.",
+    "Ensure high system reliability, security, and usability with mobile-friendly responsive design and 99.9% uptime SLA."
+  ],
+  "key_features": [
+    "Role-based authentication and authorization with JWT, multi-factor authentication, and password reset capabilities.",
+    "User management with full CRUD operations and profile maintenance for Admin, Vendor, and Supplier roles.",
+    "Vendor and Supplier management including registration, profile and contract management, vendor-supplier linking, and subscription plans for suppliers.",
+    "Inventory management supporting stock level tracking, inventory CRUD operations, and real-time inventory reports.",
+    "Order management allowing order creation, tracking, purchase order management, and comprehensive order history.",
+    "Payments module integrating Stripe for processing payments, subscription management, and payment history tracking.",
+    "Advanced forecasting module implementing ML-driven demand forecasting, inventory and cost forecasting, and integration with AWS Forecast for enhanced accuracy.",
+    "Notifications supporting email and system alerts with customizable preferences.",
+    "Comprehensive reporting and analytics including dashboards for KPIs, transaction monitoring, activity logs, and custom report generation.",
+    "File management with upload, AWS S3 integration, and processing capabilities.",
+    "Scalable microservices architecture using Docker containers orchestrated on AWS ECS with infrastructure as code via Terraform."
+  ],
+  "user_flow_summary": [
+    "Admin user logs in, manages vendor and supplier registrations, approves subscriptions, oversees payments, monitors ML model performance, and accesses global analytics dashboard.",
+    "Vendor user registers, maintains profile, searches/filter suppliers by multiple criteria, places purchase orders, manages inventory with CRUD operations, reviews forecasting insights, and generates detailed reports on orders and supplier performance.",
+    "Supplier user registers, pays subscription to activate account, manages product catalogs with pricing and stock levels, views and fulfills vendor purchase requests, accesses demand and pricing forecasts, and monitors subscription and revenue dashboards."
+  ],
+  "validation_criteria": [
+    "Successful multi-factor authentication and role-based access control functioning across all user types.",
+    "CRUD operations for users, vendors, suppliers, inventory, orders, and product catalogs operate with data integrity.",
+    "Accurate and timely ML forecasting predictions within a 2-second response time meeting precision metrics.",
+    "Seamless payment processing with Stripe including subscription management and payment history records.",
+    "Real-time notification delivery via email and in-app messages respecting user preferences.",
+    "Reports and dashboards display correct and up-to-date data catering to role-specific requirements.",
+    "Multi-tenant data isolation confirmed to prevent unauthorized cross-tenant access.",
+    "Platform demonstrates 99.9% uptime during operational hours with performance benchmarks met on all cloud-hosted services.",
+    "Security audits validate use of HTTPS, JWT tokens, encryption, and safe data handling practices.",
+    "File uploads to AWS S3 complete successfully with appropriate validation and processing."
+  ],
+  "code_summary": {
+    "project_name": "VendorFlow Management",
+    "description": "Cloud-based SaaS platform for vendor management, inventory tracking, and ML forecasting",
+    "tech_stack": {
+      "frontend": {
+        "framework": "Next.js 14.2.5",
+        "language": "TypeScript",
+        "styling": "Tailwind CSS",
+        "ui_components": "Headless UI, Heroicons",
+        "state_management": "Zustand",
+        "data_fetching": "TanStack Query",
+        "payments": "Stripe",
+        "charts": "Recharts",
+        "notifications": "React Hot Toast"
+      },
+      "backend": {
+        "framework": "NestJS 10.x",
+        "language": "TypeScript",
+        "database": "MongoDB with Mongoose",
+        "cache": "Redis (ioredis)",
+        "authentication": "JWT with Passport",
+        "validation": "Class Validator",
+        "documentation": "Swagger",
+        "security": "Helmet, Throttler",
+        "file_upload": "Multer",
+        "email": "Nodemailer",
+        "payments": "Stripe",
+        "cloud_services": "AWS SDK",
+        "2fa": "Speakeasy, QRCode"
+      },
+      "ml_service": {
+        "framework": "FastAPI",
+        "language": "Python 3.x",
+        "ml_libraries": "scikit-learn, Prophet, XGBoost",
+        "data_processing": "Pandas, NumPy",
+        "database": "MongoDB (Motor async driver)",
+        "cache": "Redis",
+        "cloud_services": "boto3 (AWS)",
+        "authentication": "python-jose"
+      },
+      "infrastructure": {
+        "containerization": "Docker",
+        "orchestration": "AWS ECS",
+        "iac": "Terraform",
+        "load_balancer": "AWS ALB",
+        "cdn": "AWS CloudFront",
+        "monitoring": "AWS CloudWatch",
+        "auth_service": "AWS Cognito",
+        "storage": "AWS S3",
+        "container_registry": "AWS ECR"
+      },
+      "build_tools": {
+        "monorepo": "Turbo",
+        "package_manager": "npm",
+        "linting": "ESLint",
+        "formatting": "Prettier",
+        "testing": "Jest"
+      }
+    },
+    "features": {
+      "authentication": {
+        "login_logout": true,
+        "jwt_tokens": true,
+        "password_reset": true,
+        "2fa_support": true,
+        "role_based_access": true
+      },
+      "user_management": {
+        "user_crud": true,
+        "role_management": true,
+        "profile_management": true
+      },
+      "vendor_management": {
+        "vendor_crud": true,
+        "vendor_profiles": true,
+        "vendor_contracts": true
+      },
+      "supplier_management": {
+        "supplier_crud": true,
+        "supplier_profiles": true
+      },
+      "inventory_management": {
+        "inventory_tracking": true,
+        "stock_levels": true,
+        "inventory_reports": true
+      },
+      "order_management": {
+        "order_creation": true,
+        "order_tracking": true,
+        "purchase_orders": true,
+        "order_history": true
+      },
+      "payments": {
+        "stripe_integration": true,
+        "payment_processing": true,
+        "subscription_plans": true,
+        "payment_history": true
+      },
+      "forecasting": {
+        "ml_forecasting": true,
+        "demand_prediction": true,
+        "aws_forecast_integration": true,
+        "forecast_reports": true
+      },
+      "notifications": {
+        "email_notifications": true,
+        "system_notifications": true,
+        "notification_preferences": true
+      },
+      "reporting": {
+        "dashboard_analytics": true,
+        "kpi_metrics": true,
+        "activity_logs": true,
+        "custom_reports": true
+      },
+      "file_management": {
+        "file_upload": true,
+        "aws_s3_storage": true,
+        "file_processing": true
+      }
+    },
+    "architecture": {
+      "type": "microservices",
+      "frontend_port": 3005,
+      "backend_port": 3000,
+      "ml_service_port": 8000,
+      "database": "MongoDB",
+      "cache": "Redis",
+      "api_style": "RESTful",
+      "authentication": "JWT Bearer Token"
+    },
+    "deployment": {
+      "containerized": true,
+      "cloud_provider": "AWS",
+      "services": [
+        "ECS",
+        "ALB",
+        "CloudFront",
+        "S3",
+        "ECR",
+        "CloudWatch",
+        "Cognito"
+      ],
+      "infrastructure_as_code": "Terraform"
+    },
+    "project_structure": {
+      "monorepo": true,
+      "workspaces": [
+        "apps/frontend",
+        "apps/backend",
+        "apps/ml-service",
+        "packages/shared-*"
+      ],
+      "build_system": "Turbo"
+    }
+  }
+}

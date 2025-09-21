@@ -100,12 +100,13 @@ export class VendorsController {
   async getDashboard(@Request() req: any): Promise<any> {
     const userId = req.userId;
     const tenantId = req.tenantId;
+    const vendorProfile = req.vendorProfile;
     
     if (!userId || !tenantId) {
       throw new BadRequestException('User context not found');
     }
     
-    return this.vendorsService.getVendorDashboard(userId, tenantId);
+    return this.vendorsService.getVendorDashboard(userId, tenantId, vendorProfile);
   }
 
   @Get('orders')
@@ -117,12 +118,75 @@ export class VendorsController {
   async getVendorOrders(@Query() query: any, @Request() req: any): Promise<any> {
     const userId = req.userId;
     const tenantId = req.tenantId;
+    const vendorProfile = req.vendorProfile;
     
     if (!userId || !tenantId) {
       throw new BadRequestException('User context not found');
     }
     
-    return this.vendorsService.getVendorOrders(userId, tenantId, query);
+    return this.vendorsService.getVendorOrders(userId, tenantId, query, vendorProfile);
+  }
+
+  @Get('orders/:id')
+  @ApiOperation({ summary: 'Get a specific vendor order by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor order retrieved successfully',
+  })
+  async getVendorOrderById(@Param('id') id: string, @Request() req: any): Promise<any> {
+    const userId = req.userId;
+    const tenantId = req.tenantId;
+    const vendorProfile = req.vendorProfile;
+    
+    if (!userId || !tenantId) {
+      throw new BadRequestException('User context not found');
+    }
+    
+    return this.vendorsService.getVendorOrderById(id, userId, tenantId, vendorProfile);
+  }
+
+  @Patch('orders/:id')
+  @ApiOperation({ summary: 'Update a specific vendor order' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor order updated successfully',
+  })
+  async updateVendorOrder(
+    @Param('id') id: string, 
+    @Body() updateData: any, 
+    @Request() req: any
+  ): Promise<any> {
+    const userId = req.userId;
+    const tenantId = req.tenantId;
+    const vendorProfile = req.vendorProfile;
+    
+    if (!userId || !tenantId) {
+      throw new BadRequestException('User context not found');
+    }
+    
+    return this.vendorsService.updateVendorOrder(id, updateData, userId, tenantId, vendorProfile);
+  }
+
+  @Patch('orders/:id/status')
+  @ApiOperation({ summary: 'Update vendor order status' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor order status updated successfully',
+  })
+  async updateVendorOrderStatus(
+    @Param('id') id: string, 
+    @Body() statusData: { status: string }, 
+    @Request() req: any
+  ): Promise<any> {
+    const userId = req.userId;
+    const tenantId = req.tenantId;
+    const vendorProfile = req.vendorProfile;
+    
+    if (!userId || !tenantId) {
+      throw new BadRequestException('User context not found');
+    }
+    
+    return this.vendorsService.updateVendorOrderStatus(id, statusData.status, userId, tenantId, vendorProfile);
   }
 
   @Get('forecast')

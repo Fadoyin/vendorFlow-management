@@ -5,7 +5,81 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { DashboardLayout } from '@/components/ui/DashboardLayout'
 import { AdminRoute } from '@/components/auth/RoleProtectedRoute'
-import { vendorsApi, type Vendor, type CreateVendorDto, type VendorSearchParams } from '@/lib/api'
+import { useUserRole } from '@/hooks/useUserRole'
+import { vendorsApi } from '@/lib/api'
+
+// Define types for vendors based on actual API response
+interface Vendor {
+  _id: string
+  id: string
+  name: string
+  vendorCode: string
+  companyName?: string
+  email?: string
+  phone?: string
+  category: string
+  description?: string
+  website?: string
+  address?: {
+    street?: string
+    city?: string
+    state?: string
+    zipCode?: string
+    country?: string
+    additionalInfo?: string
+  }
+  contacts?: Array<{
+    name: string
+    email: string
+    phone?: string
+    jobTitle?: string
+    isPrimary: boolean
+  }>
+  paymentTerms: string
+  creditLimit?: number
+  currentBalance?: number
+  performance?: {
+    totalOrders?: number
+    totalSpend?: number
+  }
+  status: string
+  fullAddress?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface CreateVendorDto {
+  name: string
+  vendorCode: string
+  category: string
+  description?: string
+  website?: string
+  address: {
+    street: string
+    city: string
+    state: string
+    zipCode: string
+    country: string
+    additionalInfo?: string
+  }
+  contacts: Array<{
+    name: string
+    email: string
+    phone?: string
+    jobTitle?: string
+    isPrimary: boolean
+  }>
+  paymentTerms: string
+  creditLimit: number
+}
+
+interface VendorSearchParams {
+  page?: number
+  limit?: number
+  search?: string
+  category?: string
+  status?: string
+}
 
 // Add Vendor Modal Component
 function AddVendorModal({ isOpen, onClose, onSuccess }: { 
@@ -590,6 +664,7 @@ function EditVendorModal({ isOpen, onClose, vendor, onSuccess }: {
 
 export default function VendorManagement() {
   const pathname = usePathname()
+  const { role, isAdmin } = useUserRole()
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
@@ -625,8 +700,18 @@ export default function VendorManagement() {
 
       const response = await vendorsApi.getAll(params)
       if (response.data) {
-        setVendors(response.data.vendors)
-        setTotal(response.data.total)
+        // Handle different response structures
+        const responseData = response.data as any
+        if (responseData.vendors && Array.isArray(responseData.vendors)) {
+          setVendors(responseData.vendors)
+          setTotal(responseData.total || 0)
+        } else if (Array.isArray(responseData)) {
+          setVendors(responseData)
+          setTotal(responseData.length)
+        } else {
+          setVendors([])
+          setTotal(0)
+        }
       }
     } catch (error) {
       console.error('Error loading vendors:', error)
@@ -761,15 +846,18 @@ export default function VendorManagement() {
           <div className="flex-1">
             {/* Title is handled by DashboardLayout, no duplication needed */}
           </div>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 w-full sm:w-auto justify-center sm:justify-start"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span>Add New Vendor</span>
-          </button>
+          {/* Hide Add New Vendor button for admins - vendors should register through the registration process */}
+          {!isAdmin && (
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 w-full sm:w-auto justify-center sm:justify-start"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span>Add New Vendor</span>
+            </button>
+          )}
         </div>
 
         {/* Filter and Search Bar */}

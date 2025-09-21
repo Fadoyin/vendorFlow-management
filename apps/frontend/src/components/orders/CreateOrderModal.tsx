@@ -166,12 +166,6 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateO
   const loadDropdownData = async () => {
     setLoadingData(true)
     try {
-      // Load inventory items
-      const inventoryResponse = await apiService.request('inventory')
-      if (inventoryResponse.data?.items) {
-        setInventoryItems(inventoryResponse.data.items)
-      }
-
       // Load different data based on user role
       if (userRole === 'vendor') {
         // Vendors create orders for suppliers
@@ -226,6 +220,12 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateO
           const vendorEmail = firstVendor.email || firstVendor.contacts?.[0]?.email || 'No email'
           console.log(`First vendor: ${vendorName} (${vendorEmail})`)
         }
+
+        // Load general inventory for suppliers (they can offer any items to vendors)
+        const inventoryResponse = await apiService.request('inventory')
+        if (inventoryResponse.data?.items) {
+          setInventoryItems(inventoryResponse.data.items)
+        }
       }
 
     } catch (error) {
@@ -234,6 +234,62 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateO
       setVendors([])
     } finally {
       setLoadingData(false)
+    }
+  }
+
+  // Load supplier-specific inventory when supplier is selected
+  const loadSupplierInventory = async (supplierId: string) => {
+    if (!supplierId) {
+      console.log('❌ No supplier ID provided, clearing inventory')
+      setInventoryItems([])
+      return
+    }
+
+    try {
+      setLoadingData(true)
+      console.log(`📡 API Call: Loading inventory for supplier: ${supplierId}`)
+      console.log(`📡 API URL: inventory/supplier/${supplierId}`)
+      
+      const inventoryResponse = await apiService.request(`inventory/supplier/${supplierId}`)
+      console.log('📦 Supplier inventory API response:', inventoryResponse)
+      console.log('📦 Response data structure:', {
+        hasData: !!inventoryResponse.data,
+        hasItems: !!inventoryResponse.data?.items,
+        itemsType: typeof inventoryResponse.data?.items,
+        itemsLength: inventoryResponse.data?.items?.length,
+        firstItem: inventoryResponse.data?.items?.[0]
+      })
+      
+      if (inventoryResponse.data?.items) {
+        setInventoryItems(inventoryResponse.data.items)
+        console.log(`✅ Successfully loaded ${inventoryResponse.data.items.length} items for supplier`)
+        console.log('📋 Items loaded:', inventoryResponse.data.items.map(item => ({ id: item._id, name: item.name, sku: item.sku })))
+      } else {
+        setInventoryItems([])
+        console.log('⚠️ No inventory items found for supplier - response structure:', inventoryResponse)
+      }
+    } catch (error) {
+      console.error('❌ Error loading supplier inventory:', error)
+      setInventoryItems([])
+    } finally {
+      setLoadingData(false)
+    }
+  }
+
+  // Handle supplier selection change
+  const handleSupplierChange = (supplierId: string) => {
+    console.log('🔄 Supplier selection changed:', { supplierId, userRole })
+    setSelectedSupplierId(supplierId)
+    // Clear current items when supplier changes
+    setFormData(prev => ({ ...prev, items: [] }))
+    setCurrentItem({ selectedInventoryId: '', quantity: 1, unitPrice: 0 })
+    
+    // Load inventory for the selected supplier
+    if (userRole === 'vendor' && supplierId) {
+      console.log('📦 Loading inventory for supplier:', supplierId)
+      loadSupplierInventory(supplierId)
+    } else {
+      console.log('❌ Not loading inventory:', { userRole, supplierId })
     }
   }
 
@@ -540,7 +596,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateO
                     </label>
                     <select
                       value={selectedSupplierId}
-                      onChange={(e) => setSelectedSupplierId(e.target.value)}
+                      onChange={(e) => handleSupplierChange(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       required
                     >
@@ -632,11 +688,19 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess }: CreateO
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">Select an item...</option>
-                      {inventoryItems.map(item => (
-                        <option key={item._id} value={item._id}>
-                          {item.name} ({item.sku})
-                        </option>
-                      ))}
+                      {(() => {
+                        console.log('🔍 Rendering inventory dropdown with items:', {
+                          itemsCount: inventoryItems.length,
+                          selectedSupplierId,
+                          userRole,
+                          items: inventoryItems.map(item => ({ id: item._id, name: item.name, sku: item.sku }))
+                        })
+                        return inventoryItems.map(item => (
+                          <option key={item._id} value={item._id}>
+                            {item.name} ({item.sku})
+                          </option>
+                        ))
+                      })()}
                     </select>
                     {currentItem.selectedInventoryId && (
                       <div className="mt-2 text-sm text-gray-600">

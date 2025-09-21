@@ -5,11 +5,13 @@ import { InventoryController } from './inventory.controller';
 import { Item, ItemSchema } from '../../common/schemas/item.schema';
 import { AwsModule } from '../../common/aws/aws.module';
 import { RBACService } from '../../common/services/rbac.service';
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Item.name, schema: ItemSchema }]),
     AwsModule,
+    ActivityLogsModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService, RBACService],

@@ -169,7 +169,7 @@ export default function ResetPasswordPage() {
           </form>
 
           <div className="mt-6 text-center">
-            <Link href="/login" className="text-revtrack-primary hover:text-revtrack-secondary">
+            <Link href="/auth?mode=login" className="text-revtrack-primary hover:text-revtrack-secondary">
               Back to login
             </Link>
           </div>

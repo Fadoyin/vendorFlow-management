@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory API Debug Tool</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        .container { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px;
+        }
+        .button:hover { background: #0056b3; }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+        .warning { color: #ffc107; }
+        .info { color: #17a2b8; }
+        pre { 
+            background: #f8f9fa; 
+            padding: 10px; 
+            border-radius: 4px; 
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .item-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            background: #f9f9f9;
+        }
+        .deleted { 
+            background: #ffebee !important; 
+            border-color: #f44336 !important;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Inventory API Debug Tool</h1>
+    
+    <div class="container">
+        <h2>🔑 Authentication</h2>
+        <div class="input-group">
+            <label for="apiBase">API Base URL:</label>
+            <input type="text" id="apiBase" value="http://localhost:3001/api" placeholder="http://localhost:3001/api">
+        </div>
+        <div class="input-group">
+            <label for="authToken">Auth Token (get from browser localStorage 'authToken'):</label>
+            <input type="text" id="authToken" placeholder="Bearer token here...">
+        </div>
+        <button class="button" onclick="testConnection()">🔗 Test Connection</button>
+        <div id="connectionStatus"></div>
+    </div>
+
+    <div class="container">
+        <h2>📦 Inventory Operations</h2>
+        <button class="button" onclick="getAllItems()">📋 Get All Items</button>
+        <button class="button" onclick="getAllItemsWithDetails()">🔍 Get Items (Detailed)</button>
+        <button class="button" onclick="checkDeletedItems()">⚠️ Check for Deleted Items</button>
+        <button class="button" onclick="clearResults()">🧹 Clear Results</button>
+        
+        <div id="itemsContainer"></div>
+    </div>
+
+    <div class="container">
+        <h2>🗑️ Delete Testing</h2>
+        <div class="input-group">
+            <label for="itemIdToDelete">Item ID to Delete:</label>
+            <input type="text" id="itemIdToDelete" placeholder="Item ID here...">
+        </div>
+        <button class="button" onclick="deleteItem()">🗑️ Delete Item</button>
+        <button class="button" onclick="checkItemStatus()">🔍 Check Item Status</button>
+        
+        <div id="deleteResults"></div>
+    </div>
+
+    <div class="container">
+        <h2>📋 Raw API Responses</h2>
+        <div id="rawResponses"></div>
+    </div>
+
+    <script>
+        let apiBase = 'http://localhost:3001/api';
+        let authToken = '';
+
+        function updateConfig() {
+            apiBase = document.getElementById('apiBase').value;
+            authToken = document.getElementById('authToken').value;
+        }
+
+        function log(message, type = 'info') {
+            console.log(message);
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            
+            // Show in UI as well
+            const container = document.getElementById('rawResponses');
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = logEntry;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function makeRequest(endpoint, options = {}) {
+            updateConfig();
+            
+            const url = `${apiBase}/${endpoint}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
+            try {
+                log(`🔄 Making request to: ${url}`, 'info');
+                const response = await fetch(url, {
+                    ...options,
+                    headers
+                });
+
+                const data = await response.json();
+                log(`📥 Response (${response.status}): ${JSON.stringify(data, null, 2)}`, response.ok ? 'success' : 'error');
+                
+                return { response, data, ok: response.ok, status: response.status };
+            } catch (error) {
+                log(`❌ Request failed: ${error.message}`, 'error');
+                return { error: error.message, ok: false };
+            }
+        }
+
+        async function testConnection() {
+            const result = await makeRequest('health');
+            const statusDiv = document.getElementById('connectionStatus');
+            
+            if (result.ok) {
+                statusDiv.innerHTML = '<span class="success">✅ Connection successful!</span>';
+            } else {
+                statusDiv.innerHTML = '<span class="error">❌ Connection failed!</span>';
+            }
+        }
+
+        async function getAllItems() {
+            const result = await makeRequest('inventory');
+            const container = document.getElementById('itemsContainer');
+            
+            if (result.ok && result.data) {
+                const items = result.data.items || result.data;
+                container.innerHTML = `
+                    <h3>📦 Found ${items.length} items:</h3>
+                    ${items.map(item => `
+                        <div class="item-card ${item.isDeleted ? 'deleted' : ''}">
+                            <strong>${item.name || 'Unknown'}</strong> (${item.sku || 'No SKU'}) 
+                            <br>ID: ${item._id}
+                            <br>Status: ${item.isDeleted ? '🗑️ DELETED' : '✅ Active'}
+                            ${item.isDeleted ? `<br>Deleted At: ${item.deletedAt || 'Unknown'}` : ''}
+                        </div>
+                    `).join('')}
+                `;
+                
+                // Check for deleted items
+                const deletedItems = items.filter(item => item.isDeleted);
+                if (deletedItems.length > 0) {
+                    container.innerHTML += `<div class="error">⚠️ WARNING: Found ${deletedItems.length} deleted items that should be filtered!</div>`;
+                }
+            } else {
+                container.innerHTML = '<div class="error">❌ Failed to fetch items</div>';
+            }
+        }
+
+        async function getAllItemsWithDetails() {
+            const result = await makeRequest('inventory');
+            const container = document.getElementById('itemsContainer');
+            
+            if (result.ok && result.data) {
+                const items = result.data.items || result.data;
+                container.innerHTML = `
+                    <h3>🔍 Detailed Analysis of ${items.length} items:</h3>
+                    <pre>${JSON.stringify(items, null, 2)}</pre>
+                `;
+            }
+        }
+
+        async function checkDeletedItems() {
+            const result = await makeRequest('inventory');
+            const container = document.getElementById('itemsContainer');
+            
+            if (result.ok && result.data) {
+                const items = result.data.items || result.data;
+                const deletedItems = items.filter(item => item.isDeleted === true);
+                const activeItems = items.filter(item => item.isDeleted !== true);
+                
+                container.innerHTML = `
+                    <h3>🔍 Delete Status Analysis:</h3>
+                    <div class="success">✅ Active Items: ${activeItems.length}</div>
+                    <div class="${deletedItems.length > 0 ? 'error' : 'success'}">
+                        🗑️ Deleted Items: ${deletedItems.length}
+                        ${deletedItems.length > 0 ? ' (These should NOT appear in the response!)' : ''}
+                    </div>
+                    
+                    ${deletedItems.length > 0 ? `
+                        <h4>⚠️ Deleted items found in response:</h4>
+                        ${deletedItems.map(item => `
+                            <div class="item-card deleted">
+                                <strong>${item.name}</strong> (${item.sku})<br>
+                                ID: ${item._id}<br>
+                                isDeleted: ${item.isDeleted}<br>
+                                deletedAt: ${item.deletedAt || 'Not set'}
+                            </div>
+                        `).join('')}
+                    ` : ''}
+                `;
+            }
+        }
+
+        async function deleteItem() {
+            const itemId = document.getElementById('itemIdToDelete').value;
+            if (!itemId) {
+                alert('Please enter an item ID');
+                return;
+            }
+
+            const result = await makeRequest(`inventory/${itemId}`, { method: 'DELETE' });
+            const container = document.getElementById('deleteResults');
+            
+            if (result.ok) {
+                container.innerHTML = `<div class="success">✅ Item deleted successfully!</div>`;
+                log(`✅ Item ${itemId} deleted successfully`, 'success');
+                
+                // Wait a moment then check if it still appears
+                setTimeout(async () => {
+                    await checkItemStatus();
+                    await getAllItems();
+                }, 1000);
+            } else {
+                container.innerHTML = `<div class="error">❌ Delete failed: ${result.error || 'Unknown error'}</div>`;
+            }
+        }
+
+        async function checkItemStatus() {
+            const itemId = document.getElementById('itemIdToDelete').value;
+            if (!itemId) {
+                alert('Please enter an item ID');
+                return;
+            }
+
+            const result = await makeRequest(`inventory/${itemId}`);
+            const container = document.getElementById('deleteResults');
+            
+            if (result.status === 404) {
+                container.innerHTML += `<div class="success">✅ Item not found (properly filtered)</div>`;
+            } else if (result.ok && result.data) {
+                const item = result.data;
+                container.innerHTML += `
+                    <div class="${item.isDeleted ? 'warning' : 'error'}">
+                        📦 Item still exists: isDeleted = ${item.isDeleted}
+                        ${item.isDeleted ? ' (Soft deleted - should not appear in list)' : ' (Still active)'}
+                    </div>
+                `;
+            } else {
+                container.innerHTML += `<div class="error">❌ Error checking item: ${result.error}</div>`;
+            }
+        }
+
+        function clearResults() {
+            document.getElementById('itemsContainer').innerHTML = '';
+            document.getElementById('deleteResults').innerHTML = '';
+            document.getElementById('rawResponses').innerHTML = '';
+        }
+
+        // Auto-load token from localStorage if available
+        window.addEventListener('load', () => {
+            try {
+                const token = localStorage.getItem('authToken');
+                if (token) {
+                    document.getElementById('authToken').value = token;
+                    log('✅ Auto-loaded auth token from localStorage', 'success');
+                }
+            } catch (e) {
+                log('ℹ️ No auth token found in localStorage', 'info');
+            }
+        });
+    </script>
+</body>
+</html> 

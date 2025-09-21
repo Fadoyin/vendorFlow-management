@@ -8,7 +8,7 @@ export interface UserContext {
   role: UserRole;
   tenantId: string;
   vendorProfile?: string;
-  supplierId?: string;
+  supplierProfile?: string;
 }
 
 @Injectable()
@@ -113,9 +113,12 @@ export class RBACService {
 
       case UserRole.SUPPLIER:
         // Suppliers can only see their own profile
+        if (!user.supplierProfile) {
+          throw new Error('Supplier user must have a supplierProfile');
+        }
         return {
           ...baseFilter,
-          _id: new Types.ObjectId(user.sub), // User ID is the supplier ID
+          _id: new Types.ObjectId(user.supplierProfile),
         };
 
       default:
@@ -149,9 +152,12 @@ export class RBACService {
 
       case UserRole.SUPPLIER:
         // Suppliers can see inventory they supply
+        if (!user.supplierProfile) {
+          throw new Error('Supplier user must have a supplierProfile');
+        }
         return {
           ...baseFilter,
-          'suppliers.supplierId': new Types.ObjectId(user.sub),
+          'suppliers.supplierId': new Types.ObjectId(user.supplierProfile),
         };
 
       default:

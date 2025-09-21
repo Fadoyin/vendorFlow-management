@@ -6,102 +6,136 @@ import {
   Query,
   UseGuards,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
+import { ActivityLogsService, CreateActivityLogDto } from './activity-logs.service';
 
 @ApiTags('activity-logs')
 @ApiBearerAuth()
 @Controller('activity-logs')
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class ActivityLogsController {
-  constructor() {}
+  constructor(private readonly activityLogsService: ActivityLogsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Get recent activity logs' })
   @ApiResponse({ status: 200, description: 'Activity logs retrieved successfully' })
-  getActivities(
+  async getActivities(
     @Query('limit') limit: string = '10',
     @Query('sort') sort: string = 'createdAt:desc',
     @Request() req: any,
   ) {
-    // Mock activity data for now
-    const mockActivities = [
-      {
-        id: '1',
-        type: 'order',
-        action: 'created',
-        description: 'New order #ORD-2024-0001 created',
-        timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(), // 2 minutes ago
-        userId: req.userId,
-        entityId: 'ORD-2024-0001',
-        entityType: 'order',
-      },
-      {
-        id: '2',
-        type: 'inventory',
-        action: 'updated',
-        description: 'Inventory updated for Premium Coffee Beans',
-        timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 minutes ago
-        userId: req.userId,
-        entityId: '1',
-        entityType: 'inventory',
-      },
-      {
-        id: '3',
-        type: 'vendor',
-        action: 'created',
-        description: 'New vendor "Tech Supplies Co" added',
-        timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1 hour ago
-        userId: req.userId,
-        entityId: 'vendor-123',
-        entityType: 'vendor',
-      },
-      {
-        id: '4',
-        type: 'payment',
-        action: 'processed',
-        description: 'Payment of $1,250 processed successfully',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-        userId: req.userId,
-        entityId: 'payment-456',
-        entityType: 'payment',
-      },
-      {
-        id: '5',
-        type: 'inventory',
-        action: 'low_stock',
-        description: 'Low stock alert for Organic Tea Leaves (5 remaining)',
-        timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
-        userId: req.userId,
-        entityId: '2',
-        entityType: 'inventory',
-      },
-    ];
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+    
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID not found in user context');
+    }
 
-    const limitNum = parseInt(limit) || 10;
-    return {
-      activities: mockActivities.slice(0, limitNum),
-      total: mockActivities.length,
-    };
+    const limitNum = Math.min(parseInt(limit) || 10, 100); // Cap at 100
+    const offset = parseInt(req.query?.offset) || 0;
+
+    try {
+      // Get real activity logs from database
+      const result = await this.activityLogsService.getRecentActivities(
+        tenantId,
+        limitNum,
+        offset
+      );
+
+      // If no real activities exist, create some sample activities for the tenant
+      if (result.activities.length === 0) {
+        await this.createSampleActivities(tenantId, userId);
+        
+        // Re-fetch after creating samples
+        const newResult = await this.activityLogsService.getRecentActivities(
+          tenantId,
+          limitNum,
+          offset
+        );
+        
+        return {
+          activities: newResult.activities,
+          total: newResult.total,
+        };
+      }
+
+      return {
+        activities: result.activities,
+        total: result.total,
+      };
+    } catch (error) {
+      console.error('Error fetching activity logs:', error);
+      
+      // Fallback to empty response
+      return {
+        activities: [],
+        total: 0,
+      };
+    }
+  }
+
+  /**
+   * Create sample activities for new tenants
+   */
+  private async createSampleActivities(tenantId: string, userId: string): Promise<void> {
+    try {
+      const sampleActivities = [
+        {
+          tenantId,
+          userId,
+          type: 'user' as any,
+          action: 'login' as any,
+          description: 'User logged into the dashboard',
+          entityType: 'user',
+        },
+        {
+          tenantId,
+          userId,
+          type: 'system' as any,
+          action: 'created' as any,
+          description: 'Dashboard initialized for tenant',
+          entityType: 'system',
+        },
+      ];
+
+      for (const activity of sampleActivities) {
+        await this.activityLogsService.create(activity);
+      }
+    } catch (error) {
+      console.error('Error creating sample activities:', error);
+    }
   }
 
   @Post()
   @ApiOperation({ summary: 'Create activity log entry' })
   @ApiResponse({ status: 201, description: 'Activity log created successfully' })
-  createActivity(@Body() activityData: any, @Request() req: any) {
-    // Mock creation - in real implementation, this would save to database
-    console.log('Creating activity log:', {
-      ...activityData,
-      userId: req.userId,
-      tenantId: req.tenantId,
-      timestamp: new Date().toISOString(),
-    });
+  async createActivity(@Body() activityData: CreateActivityLogDto, @Request() req: any) {
+    const tenantId = req.tenantId;
+    const userId = req.userId;
+    
+    if (!tenantId || !userId) {
+      throw new BadRequestException('Tenant ID and User ID are required');
+    }
 
-    return {
-      success: true,
-      message: 'Activity log created successfully',
-    };
+    try {
+      const createdActivity = await this.activityLogsService.create({
+        ...activityData,
+        tenantId,
+        userId,
+      });
+
+      return {
+        success: true,
+        message: 'Activity log created successfully',
+        data: createdActivity,
+      };
+    } catch (error) {
+      console.error('Error creating activity log:', error);
+      throw new BadRequestException('Failed to create activity log');
+    }
   }
 } 

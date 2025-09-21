@@ -171,9 +171,13 @@ export class AuthService {
         ...supplierData,
         tenantId: user.tenantId,
       });
-      await newSupplier.save();
+      const savedSupplier = await newSupplier.save();
 
-      this.logger.log(`Auto-created supplier record for user: ${user.email} in tenant: ${user.tenantId}`);
+      // Link the supplier record to the user
+      user.supplierProfile = savedSupplier._id;
+      await user.save();
+
+      this.logger.log(`Auto-created supplier record for user: ${user.email} in tenant: ${user.tenantId}, linked supplier ID: ${savedSupplier._id}`);
     } catch (error) {
       // Don't fail user registration if supplier record creation fails
       this.logger.error(`Failed to auto-create supplier record for ${user.email}: ${error.message}`);
@@ -240,7 +244,13 @@ export class AuthService {
         ...vendorData,
         tenantId: user.tenantId,
       });
-      await newVendor.save();
+      const savedVendor = await newVendor.save();
+
+      // Update the user's vendorProfile reference
+      await this.userModel.updateOne(
+        { _id: user._id },
+        { $set: { vendorProfile: savedVendor._id } }
+      );
 
       this.logger.log(`Auto-created vendor record for user: ${user.email} in tenant: ${user.tenantId}`);
     } catch (error) {
@@ -335,8 +345,11 @@ export class AuthService {
         tenantId: user.tenantId.toString(),
         companyName: user.companyName,
         vendorProfile: user.vendorProfile?.toString(),
+        supplierProfile: user.supplierProfile?.toString(),
         jti,
       };
+
+      this.logger.log(`JWT Payload for ${user.email}: vendorProfile=${accessPayload.vendorProfile}, supplierProfile=${accessPayload.supplierProfile}`);
 
       // Refresh token payload
       const refreshPayload: RefreshTokenPayload = {
@@ -412,8 +425,11 @@ export class AuthService {
       tenantId: user.tenantId.toString(),
       companyName: user.companyName,
       vendorProfile: user.vendorProfile?.toString(),
+      supplierProfile: user.supplierProfile?.toString(),
       jti,
     };
+
+    this.logger.log(`JWT Payload for ${user.email}: vendorProfile=${accessPayload.vendorProfile}, supplierProfile=${accessPayload.supplierProfile}`);
 
     // Refresh token payload
     const refreshPayload: RefreshTokenPayload = {
@@ -563,6 +579,7 @@ export class AuthService {
         tenantId: savedUser.tenantId.toString(),
         companyName: savedUser.companyName,
         vendorProfile: savedUser.vendorProfile?.toString(),
+        supplierProfile: savedUser.supplierProfile?.toString(),
         jti,
       };
 

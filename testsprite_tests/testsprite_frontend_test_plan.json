@@ -1,0 +1,535 @@
+[
+  {
+    "id": "TC001",
+    "title": "Admin login with valid credentials and 2FA",
+    "description": "Verify that an Admin user can log in successfully using valid username/password and two-factor authentication.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login page"
+      },
+      {
+        "type": "action",
+        "description": "Input valid admin username and password"
+      },
+      {
+        "type": "action",
+        "description": "Submit login form"
+      },
+      {
+        "type": "action",
+        "description": "Enter valid 2FA code"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify login is successful and Admin dashboard is displayed with JWT token issued"
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "Login failure with invalid credentials",
+    "description": "Verify that login is denied with incorrect username or password for all role types.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to login page"
+      },
+      {
+        "type": "action",
+        "description": "Input invalid username or password"
+      },
+      {
+        "type": "action",
+        "description": "Submit login form"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify login error message is displayed and access denied"
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "Password reset workflow for a user",
+    "description": "Verify the password reset works correctly with valid email and token, including email notification of reset link.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to password reset page"
+      },
+      {
+        "type": "action",
+        "description": "Enter registered email address"
+      },
+      {
+        "type": "action",
+        "description": "Request password reset link"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify reset email is received"
+      },
+      {
+        "type": "action",
+        "description": "Use reset link to open password reset form"
+      },
+      {
+        "type": "action",
+        "description": "Input new valid password and confirm"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify password is updated and user can login with new credentials"
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Create, Read, Update and Delete (CRUD) for Vendor entity by Admin",
+    "description": "Verify Admin can perform full CRUD operations on vendor profiles including validation of data integrity.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Admin"
+      },
+      {
+        "type": "action",
+        "description": "Create a new vendor with valid profile data"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify vendor is created and appears in vendor list"
+      },
+      {
+        "type": "action",
+        "description": "Read vendor profile details"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify vendor details match input data"
+      },
+      {
+        "type": "action",
+        "description": "Update vendor profile with valid changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify updates are saved and reflected"
+      },
+      {
+        "type": "action",
+        "description": "Delete the vendor"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify vendor is removed from the system"
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Supplier subscription payment processing via Stripe",
+    "description": "Verify that Supplier user can successfully subscribe using Stripe integration and subscription status updates accordingly.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Supplier"
+      },
+      {
+        "type": "action",
+        "description": "Select a subscription plan and proceed to payment"
+      },
+      {
+        "type": "action",
+        "description": "Enter valid payment information through Stripe gateway"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify payment is processed successfully and subscription status is active"
+      },
+      {
+        "type": "action",
+        "description": "Access subscription and payment history page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify recent subscription payment is logged correctly"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Role-based authorization prevents unauthorized access",
+    "description": "Verify users cannot access endpoints or UI features outside their authorized roles using JWT tokens and access control.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Vendor user"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to access Admin-specific endpoints and features"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access is denied and appropriate error is returned"
+      },
+      {
+        "type": "action",
+        "description": "Login as Supplier user and try to modify other vendor's inventory"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify forbidden error is returned"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Inventory management CRUD operations with stock level tracking",
+    "description": "Verify Vendors and Suppliers can perform CRUD on inventory items and stock levels update correctly with validations.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Vendor"
+      },
+      {
+        "type": "action",
+        "description": "Create a new inventory item with valid stock levels"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify item appears in inventory list with correct stock"
+      },
+      {
+        "type": "action",
+        "description": "Update stock levels for existing inventory item"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify stock levels are updated in real-time"
+      },
+      {
+        "type": "action",
+        "description": "Delete an inventory item"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify item is removed and stock levels reflect deletion"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Order creation and tracking by Vendor",
+    "description": "Verify Vendor users can create purchase orders to Suppliers, track order status, and view comprehensive order history.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Vendor"
+      },
+      {
+        "type": "action",
+        "description": "Create a purchase order selecting supplier and inventory items"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify new order is successfully created with correct details"
+      },
+      {
+        "type": "action",
+        "description": "Track order status through different stages (submitted, approved, fulfilled)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify order status changes are updated in real-time"
+      },
+      {
+        "type": "action",
+        "description": "Access order history page"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all past orders are displayed accurately"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Machine learning forecasting response and accuracy",
+    "description": "Verify that ML forecasting endpoints return predictions within 2 seconds and the forecast data meets precision criteria.",
+    "category": "performance",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Request demand forecast for a given vendor and time range"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify response time is under 2 seconds"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify forecast results meet expected accuracy and precision metrics"
+      },
+      {
+        "type": "action",
+        "description": "Request inventory and cost forecasts"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify results correctness and performance benchmarks"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Email and system notification delivery with user preferences",
+    "description": "Verify that notifications are sent via email and in-app system alerts according to user-configured preferences.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as any user"
+      },
+      {
+        "type": "action",
+        "description": "Configure notification preferences to enable/disable email and/or system notifications"
+      },
+      {
+        "type": "action",
+        "description": "Trigger system event that generates notifications (e.g. order status change)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify notifications are delivered only via enabled channels"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify notifications contain correct content and links"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "File upload and processing with AWS S3 integration",
+    "description": "Verify that users can successfully upload files, files are stored in AWS S3, and processed files update system accordingly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Vendor or Supplier"
+      },
+      {
+        "type": "action",
+        "description": "Upload a valid file (e.g. product catalog CSV)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify upload completes without errors"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify uploaded file is successfully stored in AWS S3 bucket"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify file processing job completes and data is reflected in system (e.g. new products created)"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Multi-tenant data isolation enforcement",
+    "description": "Verify that data is isolated per tenant and users cannot access or manipulate data belonging to other tenants.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as user of tenant A"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to access vendor, supplier or inventory data belonging to tenant B"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access is denied with proper authorization error"
+      },
+      {
+        "type": "action",
+        "description": "Try to create or update resources with tenant B identifiers"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify system rejects unauthorized operations"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Subscription plan changes and payment renewal workflow",
+    "description": "Verify that suppliers can change subscription plans, payments are processed correctly and subscription status updates without issues.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Supplier user with an active subscription"
+      },
+      {
+        "type": "action",
+        "description": "Request to upgrade or downgrade subscription plan"
+      },
+      {
+        "type": "action",
+        "description": "Complete any required payment through Stripe"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify subscription details and billing history are updated accordingly"
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "Custom report generation with role-based data filtering",
+    "description": "Verify users can generate custom reports according to role limits and reports contain correct filtered data.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Vendor"
+      },
+      {
+        "type": "action",
+        "description": "Request generation of a custom report with specific parameters"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify report is generated with correct data matching parameters"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to generate reports accessing data outside role's scope"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify access to unauthorized data is prevented"
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "System maintains 99.9% uptime under load",
+    "description": "Verify that the platform maintains 99.9% uptime during operational hours and responsive under expected load conditions.",
+    "category": "performance",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Simulate concurrent users performing key operations (login, CRUD, payments)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify system remains responsive with less than predefined latency benchmarks"
+      },
+      {
+        "type": "action",
+        "description": "Check system uptime and availability logs over a defined period"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm uptime percentage meets or exceeds 99.9%"
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Security compliance: HTTPS enforcement, JWT validation, and data encryption",
+    "description": "Verify platform enforces HTTPS, validates JWT tokens correctly, and encrypts sensitive data in transit and at rest.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Access platform endpoints via HTTP"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify redirection to HTTPS occurs"
+      },
+      {
+        "type": "action",
+        "description": "Send requests with invalid or expired JWT tokens"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify requests are rejected with appropriate error codes"
+      },
+      {
+        "type": "action",
+        "description": "Inspect data storage and verify encryption of sensitive fields"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm encryption standards are met for data at rest"
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "User profile management with role updates",
+    "description": "Verify users across all roles can update their profiles and Admin can update user roles with validation.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login as Vendor user"
+      },
+      {
+        "type": "action",
+        "description": "Update profile information (contact, address, preferences)"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify changes are saved and reflected in profile"
+      },
+      {
+        "type": "action",
+        "description": "Login as Admin"
+      },
+      {
+        "type": "action",
+        "description": "Change roles of other users"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify role changes are applied and proper access rights are granted or revoked"
+      }
+    ]
+  }
+]

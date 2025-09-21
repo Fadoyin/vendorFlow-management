@@ -10,7 +10,6 @@ import { VendorsModule } from './modules/vendors/vendors.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { ForecastsModule } from './modules/forecasts/forecasts.module';
-// // // import { ForecastingModule } from './modules/forecasting/forecasting.module';
 import { HealthModule } from './modules/health/health.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -82,7 +81,7 @@ import { LoggingModule } from './common/logging/logging.module';
     RedisModule,
     UploadModule,
     EmailModule,
-    // CronModule, // Temporarily disabled due to crypto issue
+
 
     LoggingModule,
     AuthModule,
@@ -91,7 +90,6 @@ import { LoggingModule } from './common/logging/logging.module';
     InventoryModule,
     PurchaseOrdersModule,
     ForecastsModule,
-    // ForecastingModule, // Temporarily disabled due to aggregation pipeline errors
     HealthModule,
     SuppliersModule,
     OrdersModule,

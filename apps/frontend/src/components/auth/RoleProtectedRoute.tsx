@@ -17,19 +17,37 @@ export function RoleProtectedRoute({
 }: RoleProtectedRouteProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  
+  // Initialize with synchronous check to prevent loading flash
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(() => {
+    if (typeof window === 'undefined') return null
+    
+    // Quick synchronous check
+    if (!isAuthenticated()) return false
+    
+    const user = getStoredUser()
+    if (!user) return false
+    
+    if (allowedRoles.length === 0) return true
+    
+    const userRole = user.role?.toLowerCase()
+    return allowedRoles.some(role => role.toLowerCase() === userRole)
+  })
+  
+  const [isLoading, setIsLoading] = useState(false) // Start as false since we have sync check
 
   useEffect(() => {
     const checkAccess = () => {
-      // Check if user is authenticated
+      // Re-verify access (this handles edge cases and ensures consistency)
       if (!isAuthenticated()) {
+        setIsAuthorized(false)
         router.push('/auth?mode=login')
         return
       }
 
       const user = getStoredUser()
       if (!user) {
+        setIsAuthorized(false)
         router.push('/auth?mode=login')
         return
       }
@@ -47,6 +65,7 @@ export function RoleProtectedRoute({
       )
 
       if (!hasRequiredRole) {
+        setIsAuthorized(false)
         // User doesn't have required role, redirect them
         if (redirectTo) {
           router.push(redirectTo)
@@ -61,17 +80,17 @@ export function RoleProtectedRoute({
       setIsLoading(false)
     }
 
-    checkAccess()
-  }, [router, pathname, allowedRoles, redirectTo])
+    // Only run the check if we don't already have a definitive answer
+    if (isAuthorized === null) {
+      checkAccess()
+    }
+  }, [router, pathname, allowedRoles, redirectTo, isAuthorized])
 
-  // Show loading state while checking authorization
-  if (isLoading || isAuthorized === null) {
+  // Show minimal loading state only if truly needed
+  if (isLoading && isAuthorized === null) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Checking access...</p>
-        </div>
+        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }

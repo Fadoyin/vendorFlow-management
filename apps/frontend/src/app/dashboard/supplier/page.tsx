@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
 import { DashboardLayout } from '@/components/ui/DashboardLayout'
+import { SubscriptionAndInventoryCard } from '@/components/dashboard/SubscriptionAndInventoryCard'
 import { ordersApi } from '@/lib/api'
 
 interface DashboardStats {
@@ -107,7 +108,7 @@ export default function SupplierDashboard() {
       let recentOrders: RecentOrder[] = []
       
       if (ordersResponse?.data) {
-        const ordersData = ordersResponse.data.orders || ordersResponse.data.data || ordersResponse.data
+        const ordersData = (ordersResponse.data as any).orders || (ordersResponse.data as any).data || ordersResponse.data
         
         if (Array.isArray(ordersData)) {
           recentOrders = ordersData.slice(0, 5).map((order: any) => ({
@@ -305,76 +306,110 @@ export default function SupplierDashboard() {
           </div>
         </div>
 
-        {/* Recent Orders */}
-        <div className="bg-white shadow overflow-hidden sm:rounded-md">
-          <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-            <div>
-              <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Orders</h3>
-              <p className="mt-1 max-w-2xl text-sm text-gray-500">Latest orders from the database</p>
-            </div>
-            <button
-              onClick={loadDashboardData}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              <svg className="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
-            </button>
+        {/* Subscription and Inventory Overview */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1">
+            <SubscriptionAndInventoryCard />
           </div>
-          <ul className="divide-y divide-gray-200">
-            {recentOrders.length > 0 ? (
-              recentOrders.map((order) => (
-                <li key={order._id}>
-                  <div className="px-4 py-4 sm:px-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0">
-                          <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                          </svg>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{getOrderItemName(order)}</div>
-                          <div className="text-sm text-gray-500">Order {order.id}</div>
-                          {order.items.length > 1 && (
-                            <div className="text-xs text-gray-400">+{order.items.length - 1} more items</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                          {order.status}
-                        </span>
-                        <div className="text-sm text-gray-500">{formatDate(order.createdAt)}</div>
-                      </div>
-                    </div>
-                  </div>
-                </li>
-              ))
-            ) : (
-              <li>
-                <div className="px-4 py-12 sm:px-6 text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No recent orders</h3>
-                  <p className="mt-1 text-sm text-gray-500">Get started by creating your first order.</p>
-                  <div className="mt-6">
-                    <Link
-                      href="/dashboard/supplier/orders"
-                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                    >
-                      <svg className="-ml-1 mr-2 h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                      </svg>
-                      Create New Order
-                    </Link>
-                  </div>
+          
+          {/* Recent Orders - takes up remaining space */}
+          <div className="lg:col-span-2">
+            <div className="bg-white shadow overflow-hidden sm:rounded-md">
+              <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Orders</h3>
+                  <p className="mt-1 max-w-2xl text-sm text-gray-500">Latest orders from the database</p>
                 </div>
-              </li>
-            )}
-          </ul>
+                <button
+                  onClick={loadDashboardData}
+                  className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <svg className="-ml-0.5 mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </button>
+              </div>
+
+              <ul className="divide-y divide-gray-200">
+                {dashboardData?.recentOrders?.length ? (
+                  dashboardData.recentOrders.map((order, index) => (
+                    <li key={order._id || index}>
+                      <div className="px-4 py-4 sm:px-6 hover:bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                <svg className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <div className="flex items-center">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {order.orderId || order.id}
+                                </p>
+                                <span className={`ml-2 inline-flex px-2 py-1 text-xs leading-4 font-semibold rounded-full ${
+                                  order.status === 'completed' 
+                                    ? 'bg-green-100 text-green-800'
+                                    : order.status === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : order.status === 'in_progress'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {order.status}
+                                </span>
+                              </div>
+                              <div className="mt-1">
+                                <p className="text-sm text-gray-600">
+                                  {order.items?.[0]?.stockName || order.items?.[0]?.itemName || 'Items'} 
+                                  {order.items?.length > 1 && ` +${order.items.length - 1} more`}
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                  {new Date(order.createdAt || order.orderDate).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {order.urgency && (
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                order.urgency === 'high' 
+                                  ? 'bg-red-100 text-red-800'
+                                  : order.urgency === 'medium'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}>
+                                {order.urgency}
+                              </span>
+                            )}
+                            <Link 
+                              href={`/dashboard/supplier/orders`}
+                              className="text-blue-600 hover:text-blue-500 text-sm font-medium"
+                            >
+                              View →
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))
+                ) : (
+                  <li>
+                    <div className="px-4 py-8 text-center">
+                      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">No orders</h3>
+                      <p className="mt-1 text-sm text-gray-500">You don't have any orders yet.</p>
+                    </div>
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
         </div>
 
         {/* Quick Actions */}
@@ -382,7 +417,7 @@ export default function SupplierDashboard() {
           <div className="px-4 py-5 sm:p-6">
             <h3 className="text-lg leading-6 font-medium text-gray-900">Quick Actions</h3>
             <div className="mt-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                 <Link
                   href="/dashboard/supplier/orders"
                   className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -437,32 +472,7 @@ export default function SupplierDashboard() {
                   </span>
                 </Link>
 
-                <Link
-                  href="/dashboard/supplier/analytics"
-                  className="relative group bg-white p-6 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-500 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  <div>
-                    <span className="rounded-lg inline-flex p-3 bg-purple-50 text-purple-700 ring-4 ring-white">
-                      <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </span>
-                  </div>
-                  <div className="mt-8">
-                    <h3 className="text-lg font-medium">
-                      <span className="absolute inset-0" aria-hidden="true" />
-                      Analytics
-                    </h3>
-                    <p className="mt-2 text-sm text-gray-500">
-                      View detailed analytics and reports
-                    </p>
-                  </div>
-                  <span className="pointer-events-none absolute top-6 right-6 text-gray-300 group-hover:text-gray-400" aria-hidden="true">
-                    <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M20 4h1a1 1 0 00-1-1v1zm-1 12a1 1 0 102 0h-2zM8 3a1 1 0 000 2V3zM3.293 19.293a1 1 0 101.414 1.414l-1.414-1.414zM19 4v12h2V4h-2zm1-1H8v2h12V3zm-.707.293l-16 16 1.414 1.414 16-16-1.414-1.414z" />
-                    </svg>
-                  </span>
-                </Link>
+
               </div>
             </div>
           </div>

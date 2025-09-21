@@ -98,6 +98,12 @@ export function clearAuth(): void {
   ];
   
   authKeys.forEach(key => localStorage.removeItem(key));
+  
+  // Clear user role cache
+  if (typeof window !== 'undefined') {
+    const { clearUserCache } = require('@/hooks/useUserRole');
+    clearUserCache();
+  }
 }
 
 /**

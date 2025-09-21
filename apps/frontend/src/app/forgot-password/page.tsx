@@ -95,7 +95,7 @@ export default function ForgotPasswordPage() {
                 </button>
                 
                 <Link
-                  href="/login"
+                  href="/auth?mode=login"
                   className="block w-full text-center py-3 px-4 bg-gradient-to-r from-revtrack-primary to-revtrack-secondary text-white rounded-xl font-medium hover:from-revtrack-secondary hover:to-revtrack-primary shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
                 >
                   Back to login
@@ -214,12 +214,12 @@ export default function ForgotPasswordPage() {
 
             <div className="mt-6">
               <Link
-                href="/login"
+                href="/auth?mode=login"
                 className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-xl shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-revtrack-primary"
               >
                 <span className="flex items-center">
                   <svg className="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013 3v1" />
                   </svg>
                   Back to login
                 </span>

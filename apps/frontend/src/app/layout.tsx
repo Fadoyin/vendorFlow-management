@@ -1,30 +1,39 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import { Providers } from "./providers";
+import type { Metadata } from 'next'
+import './globals.css'
+import { Providers } from './providers'
+import dynamic from 'next/dynamic'
+
+// Dynamic import of PersistentDashboardLayout to avoid hydration issues
+const PersistentDashboardLayout = dynamic(
+  () => import('../components/ui/PersistentDashboardLayout').then(mod => ({ default: mod.PersistentDashboardLayout })),
+  {
+    ssr: false,
+    loading: () => <div className="min-h-screen bg-gray-50" /> // Simple loading placeholder
+  }
+)
 
 export const metadata: Metadata = {
-  title: "VendorFlow - Smart Vendor & Inventory Management",
-  description: "Unleash efficiency with smart vendor and inventory management. Gain full control over your stock and cultivate strong vendor relationships.",
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-    viewportFit: 'cover'
+  title: 'VendorFlow - Supply Chain Management Platform',
+  description: 'Streamline your supply chain operations with advanced vendor management, inventory tracking, and intelligent forecasting.',
+  keywords: ['supply chain', 'vendor management', 'inventory', 'forecasting', 'procurement'],
+  authors: [{ name: 'VendorFlow Team' }],
+  openGraph: {
+    title: 'VendorFlow - Supply Chain Management Platform',
+    description: 'Streamline your supply chain operations with advanced vendor management, inventory tracking, and intelligent forecasting.',
+    type: 'website',
+    locale: 'en_US',
   },
-  other: {
-    'mobile-web-app-capable': 'yes',
-    'apple-mobile-web-app-capable': 'yes',
-    'apple-mobile-web-app-status-bar-style': 'default',
-    'format-detection': 'telephone=no'
+  twitter: {
+    card: 'summary_large_image',
+    title: 'VendorFlow - Supply Chain Management Platform',
+    description: 'Streamline your supply chain operations with advanced vendor management, inventory tracking, and intelligent forecasting.',
   },
   icons: {
     icon: [
-      { url: '/favicon.ico?v=3', sizes: '16x16', type: 'image/x-icon' },
-      { url: '/favicon.svg?v=3', sizes: 'any', type: 'image/svg+xml' },
-      { url: '/favicon.png?v=3', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
     ],
-    apple: '/logo1.png',
+    apple: '/favicon.png',
     shortcut: '/favicon.ico?v=3',
   },
 };
@@ -38,7 +47,9 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <Providers>
-          {children}
+          <PersistentDashboardLayout>
+            {children}
+          </PersistentDashboardLayout>
         </Providers>
       </body>
     </html>

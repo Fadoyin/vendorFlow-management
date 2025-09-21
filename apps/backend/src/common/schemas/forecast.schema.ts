@@ -225,6 +225,16 @@ export class Forecast extends BaseDocument {
 
   @Prop({ type: Date })
   lastRetryAt: Date;
+
+  // Additional metrics for compatibility
+  @Prop({ type: Number, min: 0, max: 1 })
+  accuracy?: number;
+
+  @Prop({ type: Number, min: 0 })
+  mae?: number;
+
+  @Prop({ type: Number, min: 0 })
+  rmse?: number;
 }
 
 export const ForecastSchema = SchemaFactory.createForClass(Forecast);

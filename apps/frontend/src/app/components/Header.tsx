@@ -97,7 +97,7 @@ export default function Header() {
         {/* User actions */}
         <div className="hidden lg:flex lg:flex-1 lg:justify-end lg:gap-x-4 items-center">
           <Link
-            href="/login"
+            href="/auth?mode=login"
             className={`px-4 py-2 text-sm font-medium transition-all duration-300 rounded-lg ${
               scrolled 
                 ? 'text-revtrack-text-secondary hover:text-revtrack-primary hover:bg-revtrack-background' 
@@ -174,7 +174,7 @@ export default function Header() {
                 </div>
                 <div className="py-6 space-y-4">
                   <Link
-                    href="/login"
+                    href="/auth?mode=login"
                     onClick={() => setMobileMenuOpen(false)}
                     className="-mx-3 block rounded-xl px-3 py-3 text-base font-semibold leading-7 text-revtrack-text-primary hover:bg-revtrack-background transition-colors duration-300"
                   >

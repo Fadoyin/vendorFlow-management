@@ -11,6 +11,7 @@ import {
   UseGuards,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { InventoryService } from './inventory.service';
@@ -21,11 +22,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { UserRole } from '../../common/schemas/user.schema';
 import { RBACService } from '../../common/services/rbac.service';
+import { Types } from 'mongoose';
 
 @ApiTags('inventory')
 @Controller('inventory')
 @UseGuards(JwtAuthGuard, TenantGuard)
 export class InventoryController {
+  private readonly logger = new Logger(InventoryController.name);
+
   constructor(
     private readonly inventoryService: InventoryService,
     private readonly rbacService: RBACService,
@@ -42,12 +46,23 @@ export class InventoryController {
     @Body() createItemDto: CreateItemDto,
     @Request() req: any,
   ): Promise<Item> {
-    const tenantId = req.user?.tenantId;
-    const userId = req.user?.sub;
+    const tenantId = req.tenantId || req.user?.tenantId;
+    const userId = req.userId || req.user?.sub;
     if (!tenantId || !userId) {
       throw new BadRequestException('User context not found');
     }
-    return this.inventoryService.create(createItemDto, tenantId, userId);
+    
+    // Build user context with all necessary fields
+    const user = {
+      sub: userId,
+      role: req.userRole || req.user?.role,
+      tenantId: tenantId,
+      vendorProfile: req.vendorProfile,
+      supplierProfile: req.supplierProfile,
+      email: req.user?.email,
+    };
+    
+    return this.inventoryService.create(createItemDto, tenantId, userId, user);
   }
 
   @Get()
@@ -69,22 +84,74 @@ export class InventoryController {
     @Request() req: any,
   ): Promise<{ items: Item[]; total: number; stats?: any }> {
     const user = {
-      sub: req.user?.sub,
+      sub: req.userId,
       email: req.user?.email,
-      role: req.user?.role,
-      tenantId: req.user?.tenantId,
-      vendorProfile: req.user?.vendorProfile,
+      role: req.userRole,
+      tenantId: req.tenantId,
+      vendorProfile: req.vendorProfile,
+      supplierProfile: req.supplierProfile,
     };
     
     if (!user.tenantId) {
       throw new BadRequestException('Tenant ID not found in user context');
     }
 
+    // SECURITY: Log inventory access for audit trail
+    this.logger.log(`Inventory access by ${user.role} user ${user.email} for tenant ${user.tenantId}`);
+
     // Use RBAC service for proper tenant isolation
-    // Admins see all inventory WITHIN THEIR TENANT, not across all tenants
+    // Admins see all inventory WITHIN THEIR TENANT ONLY, not across all tenants
     const inventoryFilter = this.rbacService.buildInventoryFilter(user);
     
     return this.inventoryService.findAllWithFilter(inventoryFilter, query);
+  }
+
+  @Get('supplier/:supplierId')
+  @ApiOperation({ summary: 'Get inventory items by supplier ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Supplier inventory retrieved successfully',
+    type: [Item],
+  })
+  async getSupplierInventory(
+    @Param('supplierId') supplierId: string,
+    @Query() query: any,
+    @Request() req: any,
+  ): Promise<{ items: Item[]; total: number }> {
+    const user = req.user;
+    const tenantId = user?.tenantId;
+    
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID not found in user context');
+    }
+
+    // Build filter for supplier's inventory within the same tenant
+    const supplierFilter = {
+      tenantId: new Types.ObjectId(tenantId),
+      'suppliers.supplierId': new Types.ObjectId(supplierId),
+      isDeleted: false,
+    };
+    
+    const result = await this.inventoryService.findAllWithFilter(supplierFilter, query);
+    
+    // Debug logging for API response
+    console.log('🚀 Supplier Inventory API Response:', {
+      supplierId,
+      itemsFound: result.items.length,
+      totalCount: result.total,
+      firstItem: result.items[0] ? {
+        id: result.items[0]._id,
+        name: result.items[0].name,
+        sku: result.items[0].sku
+      } : null,
+      responseStructure: {
+        hasItems: !!result.items,
+        itemsIsArray: Array.isArray(result.items),
+        itemsLength: result.items?.length || 0
+      }
+    });
+    
+    return result;
   }
 
   @Get('stats')
@@ -94,17 +161,23 @@ export class InventoryController {
     description: 'Inventory statistics retrieved successfully',
   })
   async getStats(@Request() req: any): Promise<any> {
-    const tenantId = req.user?.tenantId;
-    const userRole = req.user?.role;
+    const user = {
+      sub: req.userId,
+      email: req.user?.email,
+      role: req.userRole,
+      tenantId: req.tenantId,
+      vendorProfile: req.vendorProfile,
+      supplierProfile: req.supplierProfile,
+    };
     
-    if (!tenantId) {
+    if (!user.tenantId) {
       throw new BadRequestException('Tenant ID not found in user context');
     }
 
-    // Admin users can see stats from all vendors, vendors only see their own
-    const filterTenantId = userRole === UserRole.ADMIN ? null : tenantId;
+    // Use RBAC service for proper role-based filtering
+    const inventoryFilter = this.rbacService.buildInventoryFilter(user);
     
-    return this.inventoryService.getInventoryStats(filterTenantId);
+    return this.inventoryService.getInventoryStatsWithFilter(inventoryFilter);
   }
 
   @Get('low-stock')
@@ -122,10 +195,9 @@ export class InventoryController {
       throw new BadRequestException('Tenant ID not found in user context');
     }
 
-    // Admin users can see low stock items from all vendors, vendors only see their own
-    const filterTenantId = userRole === UserRole.ADMIN ? null : tenantId;
-    
-    return this.inventoryService.getLowStockItems(filterTenantId);
+    // SECURITY FIX: ALL users (including admins) must be scoped to their tenant
+    // Admin users can see low stock items from all vendors WITHIN THEIR TENANT only
+    return this.inventoryService.getLowStockItems(tenantId);
   }
 
   @Get('search')

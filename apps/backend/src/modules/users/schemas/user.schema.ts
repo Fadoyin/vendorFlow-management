@@ -100,6 +100,9 @@ export class User extends Document {
   @Prop({ type: Types.ObjectId, ref: 'Vendor' })
   vendorProfile?: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'Supplier' })
+  supplierProfile?: Types.ObjectId;
+
   @Prop()
   stripeCustomerId?: string;
 

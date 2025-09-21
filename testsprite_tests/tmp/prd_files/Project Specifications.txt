@@ -1,0 +1,176 @@
+📌 Project Specifications – VendorFlow (Cloud SaaS for Food Manufacturing Vendor Management)
+1. System Overview
+
+VendorFlow is a cloud-based multi-tenant SaaS platform designed for small-scale food manufacturers (Vendors) to connect with raw material suppliers. It integrates machine learning models to provide inventory, demand, and cost forecasting. The platform has 3 roles only: Admin, Vendor, and Supplier.
+
+2. User Roles & Specifications
+🔹 Admin
+
+Authentication & Authorization: Role-based access (super-admin).
+
+Functional Specs:
+
+Approve/reject new vendor and supplier registrations.
+
+Manage subscription plans for suppliers.
+
+Oversee transactions, payment reports, and invoices.
+
+Configure categories (e.g., raw material types).
+
+Monitor and retrain ML models.
+
+Access global analytics dashboard.
+
+🔹 Vendor (Food Manufacturer / Buyer)
+
+Authentication: Secure login with multi-factor optional.
+
+Functional Specs:
+
+Register and maintain vendor profile.
+
+Search & filter suppliers based on product type, price, availability.
+
+Place purchase requests/orders.
+
+Manage inventory (CRUD: create, read, update, delete).
+
+Access forecasting insights:
+
+Demand forecasting → Predict raw material needs.
+
+Inventory recommendations → Stock optimization.
+
+Cost optimization → Supplier pricing predictions.
+
+Generate reports (order history, supplier performance, inventory trends).
+
+🔹 Supplier (Raw Material Provider / Seller)
+
+Authentication: Role-based access tied to subscription plan.
+
+Functional Specs:
+
+Register and create supplier profile.
+
+Pay subscription to activate account.
+
+Manage product catalog (CRUD).
+
+Set prices and stock levels.
+
+View and fulfill vendor purchase requests.
+
+Access forecasting insights:
+
+Demand trends from vendors.
+
+Pricing suggestions based on market trends.
+
+Supplier dashboard showing: orders received, revenue, subscription status.
+
+3. Core Modules & Features
+🔹 Vendor Management Module
+
+Vendor registration & supplier subscription flows.
+
+Vendor ↔ Supplier linking.
+
+Order lifecycle: request → approval → fulfillment → completion.
+
+🔹 Inventory & Forecasting Module
+
+Vendor inventory management.
+
+ML models:
+
+Demand Forecasting: Predict vendor purchase needs.
+
+Inventory Forecasting: Avoid stockouts/overstock.
+
+Cost Forecasting: Predict pricing changes from suppliers.
+
+Recommendations engine integrated into dashboards.
+
+🔹 Payments & Subscriptions
+
+Supplier subscription system.
+
+Integration with Stripe for recurring payments.
+
+Invoices, receipts, and payment history.
+
+🔹 Reporting & Analytics
+
+Admin: Global analytics (users, transactions, revenue).
+
+Vendor: Inventory insights, supplier performance, cost forecasting.
+
+Supplier: Revenue trends, demand forecasts, subscription tracking.
+
+🔹 Multi-Tenant SaaS
+
+Each vendor and supplier has isolated data.
+
+Role-based database access layer.
+
+Scalable architecture for multiple businesses.
+
+4. Technology Stack
+
+Frontend: React + TailwindCSS (responsive, modern UI).
+
+Backend: Spring Boot (Java) or Node.js (Express).
+
+Database:
+
+MySQL → transactional data (orders, subscriptions).
+
+MongoDB → forecasting & inventory logs.
+
+Machine Learning: Python ML services (FastAPI/Flask) integrated via REST APIs.
+
+Payments: Stripe subscription API.
+
+Authentication: JWT + OAuth2 (Google login optional).
+
+Cloud Hosting: AWS (EC2/Elastic Beanstalk + S3 for storage).
+
+Containerization: Docker for portability.
+
+5. Non-Functional Specifications
+
+Scalability: Horizontal scaling for vendors/suppliers.
+
+Security: End-to-end encryption (HTTPS + JWT tokens).
+
+Performance: ML predictions under 2s response time.
+
+Reliability: 99.9% uptime SLA.
+
+Usability: Mobile-friendly responsive design.
+
+Data Privacy: Role-based data isolation (multi-tenancy).
+
+6. Deliverables
+
+Fully functional SaaS platform.
+
+Role-specific dashboards (Admin, Vendor, Supplier).
+
+ML-powered forecasting services.
+
+Subscription-based supplier payment system.
+
+Cloud-deployed application with CI/CD pipelines.
+
+⚡ This specifications document now gives you:
+
+What system does (overview)
+
+Who uses it (3 roles)
+
+What modules it has (features)
+
+How it will be built (tech stack + non-functional specs)

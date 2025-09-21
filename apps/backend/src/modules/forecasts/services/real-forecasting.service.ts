@@ -559,7 +559,7 @@ export class RealForecastingService {
       categoryBreakdown: this.generateCostCategoryBreakdown(monthlyPredictions),
       totalForecast: monthlyPredictions.reduce((sum, month) => sum + month.totalCost, 0),
       averageMonthlyCost: monthlyPredictions.reduce((sum, month) => sum + month.totalCost, 0) / monthlyPredictions.length,
-      overallGrowthRate: this.calculateGrowthRate(monthlyPredictions),
+              overallGrowthRate: this.calculateCostGrowthRate(monthlyPredictions),
       confidenceLevel: monthlyPredictions.reduce((sum, month) => sum + month.confidence, 0) / monthlyPredictions.length,
       riskFactors: this.assessCostRisks(monthlyPredictions, baseMonthlyBudget),
       recommendations: this.generateCostRecommendations(monthlyPredictions, baseMonthlyBudget),
@@ -716,7 +716,7 @@ export class RealForecastingService {
     ];
   }
 
-  private calculateGrowthRate(monthlyPredictions: any[]): number {
+  private calculateCostGrowthRate(monthlyPredictions: any[]): number {
     if (monthlyPredictions.length < 2) return 0;
     const firstMonth = monthlyPredictions[0].totalCost;
     const lastMonth = monthlyPredictions[monthlyPredictions.length - 1].totalCost;

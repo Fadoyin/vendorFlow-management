@@ -33,6 +33,7 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.vendorProfile,
     );
   }
 
@@ -68,6 +69,8 @@ export class OrdersController {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
       },
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 
@@ -79,6 +82,8 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 
@@ -90,6 +95,8 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 
@@ -113,6 +120,7 @@ export class OrdersController {
         limit: parseInt(limit),
         status,
       },
+      req.vendorProfile,
     );
   }
 
@@ -136,6 +144,7 @@ export class OrdersController {
         limit: parseInt(limit),
         status,
       },
+      req.supplierProfile,
     );
   }
 
@@ -148,6 +157,8 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 
@@ -165,6 +176,8 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 
@@ -182,6 +195,8 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 
@@ -194,6 +209,8 @@ export class OrdersController {
       req.tenantId,
       req.userId,
       req.userRole,
+      req.supplierProfile,
+      req.vendorProfile,
     );
   }
 }

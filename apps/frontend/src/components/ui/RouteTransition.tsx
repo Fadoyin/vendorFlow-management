@@ -9,40 +9,42 @@ interface RouteTransitionProps {
 }
 
 export function RouteTransition({ children }: RouteTransitionProps) {
-  const pathname = usePathname()
+  const [mounted, setMounted] = useState(false)
   const [isTransitioning, setIsTransitioning] = useState(false)
-  const [currentPath, setCurrentPath] = useState(pathname)
+  const [currentPath, setCurrentPath] = useState('')
+  
+  // Always call hooks in the same order
+  const pathname = usePathname()
 
   useEffect(() => {
-    if (pathname !== currentPath) {
-      // Start transition
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted && pathname && pathname !== currentPath) {
+      // Start transition immediately with content
+      setCurrentPath(pathname)
       setIsTransitioning(true)
       
-      // Short delay to show loading state, then switch content
+      // Brief transition for smooth feel, but show content immediately
       const timer = setTimeout(() => {
-        setCurrentPath(pathname)
         setIsTransitioning(false)
-      }, 150) // Very short delay for snappy feeling
+      }, 100) // Much shorter delay, content shows immediately
 
       return () => clearTimeout(timer)
     }
-  }, [pathname, currentPath])
+  }, [pathname, currentPath, mounted])
 
   return (
     <div className="route-transition-container">
-      <LoadingWrapper 
-        isLoading={isTransitioning}
-        skeleton={<SkeletonDashboard />}
-        delay={100} // Show skeleton quickly
+      {/* Show content immediately, just with a subtle transition */}
+      <div 
+        className={`transition-opacity duration-100 ${
+          isTransitioning ? 'opacity-90' : 'opacity-100'
+        }`}
       >
-        <div 
-          className={`transition-opacity duration-200 ${
-            isTransitioning ? 'opacity-50' : 'opacity-100'
-          }`}
-        >
-          {children}
-        </div>
-      </LoadingWrapper>
+        {children}
+      </div>
     </div>
   )
 }

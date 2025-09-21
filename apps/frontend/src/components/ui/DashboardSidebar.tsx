@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useUserRole } from '@/hooks/useUserRole'
+import { useUserRole, getUserRoleSync } from '@/hooks/useUserRole'
 
 interface DashboardSidebarProps {
   className?: string
@@ -187,6 +187,13 @@ const navigationStructure = {
             href: '/dashboard/supplier/orders',
             icon: '📋',
             description: 'Incoming orders'
+          },
+          {
+            id: 'supplier-inventory',
+            name: 'Inventory',
+            href: '/dashboard/supplier/inventory',
+            icon: '📦',
+            description: 'Manage your items'
           }
         ]
       },
@@ -224,36 +231,29 @@ export function DashboardSidebar({ className = '', isOpen = false, setIsOpen }: 
   const router = useRouter()
   const [isPrefetching, setIsPrefetching] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
-  const [clientRole, setClientRole] = useState<string | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [isCollapsed, setIsCollapsed] = useState(false)
+  
+  // Initialize with null to ensure consistent server/client rendering
+  const [clientRole, setClientRole] = useState<string | null>(null)
 
-  // Handle mounting and hydration
+  // Handle mounting
   useEffect(() => {
     setIsMounted(true)
     
-    // Get role from localStorage directly to avoid hydration mismatch
-    if (typeof window !== 'undefined') {
-      const storedUserData = localStorage.getItem('mockUserData')
-      if (storedUserData) {
-        try {
-          const userData = JSON.parse(storedUserData)
-          setClientRole(userData.role?.toLowerCase() || 'admin')
-        } catch (e) {
-          setClientRole('admin')
-        }
-      } else {
-        setClientRole('admin')
-      }
+    // Initialize role after mounting to avoid hydration mismatch
+    const currentRole = getUserRoleSync()
+    if (currentRole) {
+      setClientRole(currentRole.toLowerCase())
     }
   }, [])
 
-  // Update client role when userRole changes
+  // Update client role when userRole changes (but only if different)
   useEffect(() => {
-    if (userRole && isMounted) {
+    if (userRole && isMounted && userRole.toLowerCase() !== clientRole) {
       setClientRole(userRole.toLowerCase())
     }
-  }, [userRole, isMounted])
+  }, [userRole, isMounted, clientRole])
 
   // Prevent body scrolling on mobile when sidebar is open (Android fix)
   useEffect(() => {
@@ -302,13 +302,12 @@ export function DashboardSidebar({ className = '', isOpen = false, setIsOpen }: 
     }
   }, [router, isPrefetching, isMounted, clientRole])
 
+  // Get the role to use - prefer clientRole when available, fallback to userRole
+  const roleToUse = clientRole || userRole?.toLowerCase() || 'user'
+
   // Get navigation structure based on user role
   const getCurrentNavigation = () => {
-    if (!isMounted || !clientRole) {
-      return navigationStructure.admin
-    }
-    
-    return navigationStructure[clientRole as keyof typeof navigationStructure] || navigationStructure.admin
+    return navigationStructure[roleToUse as keyof typeof navigationStructure] || navigationStructure.admin
   }
 
   const currentNavigation = getCurrentNavigation()
@@ -326,12 +325,18 @@ export function DashboardSidebar({ className = '', isOpen = false, setIsOpen }: 
   }
 
   const handleLinkClick = (href: string) => {
-    // Immediate navigation with optimistic UI
-    router.push(href)
-    
+    // Close mobile menu immediately for better UX
     if (setIsOpen) {
       setIsOpen(false)
     }
+    
+    // Immediate navigation with optimistic UI
+    router.push(href)
+  }
+
+  // Prefetch on hover for instant navigation
+  const handleLinkHover = (href: string) => {
+    router.prefetch(href)
   }
 
   const toggleSection = (sectionTitle: string) => {
@@ -349,13 +354,14 @@ export function DashboardSidebar({ className = '', isOpen = false, setIsOpen }: 
     const isActive = isActiveLink(item.href)
     
     return (
-      <Link
+            <Link
         href={item.href}
         onClick={(e) => {
           e.preventDefault()
           handleLinkClick(item.href)
         }}
-                 className={`nav-item relative flex items-center px-3 py-3 rounded-xl transition-all duration-200 ${
+        onMouseEnter={() => handleLinkHover(item.href)}
+        className={`nav-item relative flex items-center px-3 py-3 rounded-xl transition-all duration-150 ${
           isActive
             ? 'bg-gradient-to-r from-revtrack-primary to-revtrack-secondary text-white shadow-lg shadow-revtrack-primary/25'
             : 'text-gray-700 hover:bg-gray-50 hover:text-revtrack-primary'
@@ -437,52 +443,6 @@ export function DashboardSidebar({ className = '', isOpen = false, setIsOpen }: 
           ))}
         </div>
       </div>
-    )
-  }
-
-  // Don't render until mounted to prevent hydration mismatch
-  if (!isMounted) {
-    return (
-      <>
-        {/* Mobile backdrop */}
-        {isOpen && (
-          <div 
-            className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
-            onClick={() => setIsOpen?.(false)}
-          />
-        )}
-        
-        {/* Loading skeleton */}
-        <aside className={`
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
-          fixed inset-y-0 left-0 z-50 w-80 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
-          lg:translate-x-0 lg:relative lg:w-72 lg:flex lg:flex-col lg:border-r lg:border-gray-200 lg:shadow-lg
-          ${className}
-        `}>
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 lg:hidden">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-gray-200 rounded-lg animate-pulse" />
-              <div className="w-24 h-4 bg-gray-200 rounded animate-pulse" />
-            </div>
-            <div className="w-6 h-6 bg-gray-200 rounded animate-pulse" />
-          </div>
-          
-          <div className="flex-1 p-6">
-            <div className="space-y-6">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="space-y-3">
-                  <div className="w-16 h-3 bg-gray-200 rounded animate-pulse" />
-                  <div className="space-y-2">
-                    {[1, 2, 3].map((j) => (
-                      <div key={j} className="h-12 bg-gray-200 rounded-xl animate-pulse" />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </aside>
-      </>
     )
   }
 

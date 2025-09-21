@@ -428,9 +428,10 @@ export class VendorsService {
     }
   }
 
-  async getVendorDashboard(userId: string, tenantId: string): Promise<any> {
+  async getVendorDashboard(userId: string, tenantId: string, vendorProfile?: string): Promise<any> {
     try {
-      this.logger.log(`Getting dashboard data for vendor: ${userId}`);
+      const vendorIdToUse = vendorProfile || userId;
+      this.logger.log(`Getting dashboard data for vendor: ${vendorIdToUse}, userId: ${userId}, vendorProfile: ${vendorProfile}`);
       
       // Get current date ranges for comparison
       const now = new Date();
@@ -446,7 +447,7 @@ export class VendorsService {
       };
       
       const filter = {
-        vendorId: new Types.ObjectId(userId),
+        vendorId: new Types.ObjectId(vendorIdToUse),
         tenantId: new Types.ObjectId(tenantId),
         ...isDeletedFilter,
       };
@@ -473,7 +474,7 @@ export class VendorsService {
 
       // Get products count
       const productsCount = await this.itemModel.countDocuments({
-        vendorId: new Types.ObjectId(userId),
+        vendorId: new Types.ObjectId(vendorIdToUse),
         tenantId: new Types.ObjectId(tenantId),
         ...isDeletedFilter,
       });
@@ -518,7 +519,7 @@ export class VendorsService {
         recentOrders: formattedRecentOrders,
       };
 
-      this.logger.log(`Dashboard data retrieved for vendor ${userId}: ${JSON.stringify(dashboardData)}`);
+      this.logger.log(`Dashboard data retrieved for vendor ${vendorIdToUse}: ${JSON.stringify(dashboardData)}`);
       return dashboardData;
     } catch (error) {
       this.logger.error(`Error getting vendor dashboard: ${error.message}`);
@@ -526,9 +527,10 @@ export class VendorsService {
     }
   }
 
-  async getVendorOrders(userId: string, tenantId: string, query: any = {}): Promise<any> {
+  async getVendorOrders(userId: string, tenantId: string, query: any = {}, vendorProfile?: string): Promise<any> {
     try {
-      this.logger.log(`Getting orders for vendor: ${userId}, tenantId: ${tenantId}`);
+      const vendorIdToUse = vendorProfile || userId;
+      this.logger.log(`Getting orders for vendor: ${vendorIdToUse}, tenantId: ${tenantId}, userId: ${userId}, vendorProfile: ${vendorProfile}`);
       
       const {
         page = 1,
@@ -540,7 +542,7 @@ export class VendorsService {
       } = query;
 
       const filter: any = {
-        vendorId: new Types.ObjectId(userId),
+        vendorId: new Types.ObjectId(vendorIdToUse),
         tenantId: new Types.ObjectId(tenantId),
         $or: [
           { isDeleted: false },
@@ -571,92 +573,231 @@ export class VendorsService {
       
       const [totalOrders, pendingOrders, completedOrders, revenueData] = await Promise.all([
         this.orderModel.countDocuments({
-          vendorId: new Types.ObjectId(userId),
+          vendorId: new Types.ObjectId(vendorIdToUse),
           tenantId: new Types.ObjectId(tenantId),
-          ...isDeletedFilter,
+          ...isDeletedFilter
         }),
         this.orderModel.countDocuments({
-          vendorId: new Types.ObjectId(userId),
+          vendorId: new Types.ObjectId(vendorIdToUse),
           tenantId: new Types.ObjectId(tenantId),
           status: 'pending',
-          ...isDeletedFilter,
+          ...isDeletedFilter
         }),
         this.orderModel.countDocuments({
-          vendorId: new Types.ObjectId(userId),
+          vendorId: new Types.ObjectId(vendorIdToUse),
           tenantId: new Types.ObjectId(tenantId),
-          status: { $in: ['completed', 'delivered'] },
-          ...isDeletedFilter,
+          status: 'completed',
+          ...isDeletedFilter
         }),
         this.orderModel.aggregate([
           {
             $match: {
-              vendorId: new Types.ObjectId(userId),
+              vendorId: new Types.ObjectId(vendorIdToUse),
               tenantId: new Types.ObjectId(tenantId),
-              status: { $in: ['confirmed', 'completed', 'delivered'] },
-              ...isDeletedFilter,
-            },
+              ...isDeletedFilter
+            }
           },
           {
             $group: {
               _id: null,
-              totalRevenue: { $sum: '$totalAmount' },
-            },
-          },
-        ]),
+              totalRevenue: { $sum: '$totalAmount' }
+            }
+          }
+        ])
       ]);
 
-      const revenue = revenueData[0]?.totalRevenue || 0;
+      const stats = {
+        totalOrders,
+        pending: pendingOrders,
+        completed: completedOrders,
+        revenue: revenueData[0]?.totalRevenue || 0
+      };
 
-      // Build sort object
-      const sort: any = {};
-      sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
-
-      // Get paginated orders
+      // Get orders with pagination
       const skip = (page - 1) * limit;
       const orders = await this.orderModel
         .find(filter)
-        .sort(sort)
+        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .select('orderId totalAmount status createdAt items')
-        .lean();
+        .populate('supplierId', 'name')
+        .exec();
 
-      // Get total count for filtered results
-      const total = await this.orderModel.countDocuments(filter);
-
-      // Format orders
-      const formattedOrders = orders.map((order: any) => ({
-        id: order._id.toString(),
-        orderId: order.orderId,
-        customer: 'Customer', // Generic name since not in schema
-        amount: order.totalAmount,
-        status: order.status,
-        date: new Date(order.createdAt).toISOString().split('T')[0], // Format as YYYY-MM-DD
-        items: order.items?.length || 0,
-      }));
+             // Format orders for response
+       const formattedOrders = orders.map(order => ({
+         id: order._id.toString(),
+         _id: order._id.toString(),
+         orderId: order.orderId,
+         supplierId: order.supplierId?._id?.toString() || order.supplierId,
+         supplierName: (order.supplierId as any)?.name || 'Unknown Supplier',
+         status: order.status,
+         totalAmount: order.totalAmount,
+         orderDate: order.orderDate,
+         expectedDeliveryDate: order.expectedArrivalDate,
+         items: order.items,
+         shippingAddress: order.shippingAddress,
+         notes: order.notes,
+         priority: order.priority
+       }));
 
       const result = {
-        stats: {
-          totalOrders,
-          pending: pendingOrders,
-          completed: completedOrders,
-          revenue: Math.round(revenue * 100) / 100,
-        },
+        stats,
         orders: formattedOrders,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / limit),
-        },
+          total: totalOrders,
+          pages: Math.ceil(totalOrders / limit)
+        }
       };
 
-      this.logger.log(`Orders retrieved for vendor ${userId}: ${formattedOrders.length} orders`);
-      this.logger.log(`Query filter used: ${JSON.stringify(filter)}`);
-      this.logger.log(`Sample order IDs found: ${formattedOrders.slice(0, 3).map(o => o.orderId).join(', ')}`);
+      this.logger.log(`Orders retrieved for vendor ${vendorIdToUse}: ${formattedOrders.length} orders`);
       return result;
     } catch (error) {
       this.logger.error(`Error getting vendor orders: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async getVendorOrderById(orderId: string, userId: string, tenantId: string, vendorProfile?: string): Promise<any> {
+    try {
+      const vendorIdToUse = vendorProfile || userId;
+      this.logger.log(`Getting order ${orderId} for vendor: ${vendorIdToUse}`);
+
+      const order = await this.orderModel
+        .findOne({
+          _id: new Types.ObjectId(orderId),
+          vendorId: new Types.ObjectId(vendorIdToUse),
+          tenantId: new Types.ObjectId(tenantId),
+          $or: [
+            { isDeleted: false },
+            { isDeleted: { $exists: false } }
+          ]
+        })
+        .populate('supplierId', 'name email')
+        .exec();
+
+      if (!order) {
+        throw new NotFoundException(`Order with ID ${orderId} not found for this vendor`);
+      }
+
+             return {
+         id: order._id.toString(),
+         _id: order._id.toString(),
+         orderId: order.orderId,
+         supplierId: order.supplierId?._id?.toString() || order.supplierId,
+         supplierName: (order.supplierId as any)?.name || 'Unknown Supplier',
+         status: order.status,
+         totalAmount: order.totalAmount,
+         orderDate: order.orderDate,
+         expectedDeliveryDate: order.expectedArrivalDate,
+         items: order.items,
+         shippingAddress: order.shippingAddress,
+         notes: order.notes,
+         priority: order.priority
+       };
+    } catch (error) {
+      this.logger.error(`Error getting vendor order by ID: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateVendorOrder(orderId: string, updateData: any, userId: string, tenantId: string, vendorProfile?: string): Promise<any> {
+    try {
+      const vendorIdToUse = vendorProfile || userId;
+      this.logger.log(`Updating order ${orderId} for vendor: ${vendorIdToUse}`);
+
+      // Verify the order belongs to this vendor
+      const existingOrder = await this.orderModel.findOne({
+        _id: new Types.ObjectId(orderId),
+        vendorId: new Types.ObjectId(vendorIdToUse),
+        tenantId: new Types.ObjectId(tenantId),
+        $or: [
+          { isDeleted: false },
+          { isDeleted: { $exists: false } }
+        ]
+      });
+
+      if (!existingOrder) {
+        throw new NotFoundException(`Order with ID ${orderId} not found for this vendor`);
+      }
+
+      // Update the order
+      const updatedOrder = await this.orderModel
+        .findByIdAndUpdate(
+          orderId,
+          {
+            ...updateData,
+            updatedAt: new Date()
+          },
+          { new: true }
+        )
+        .populate('supplierId', 'name')
+        .exec();
+
+             return {
+         id: updatedOrder._id.toString(),
+         _id: updatedOrder._id.toString(),
+         orderId: updatedOrder.orderId,
+         supplierId: updatedOrder.supplierId?._id?.toString() || updatedOrder.supplierId,
+         supplierName: (updatedOrder.supplierId as any)?.name || 'Unknown Supplier',
+         status: updatedOrder.status,
+         totalAmount: updatedOrder.totalAmount,
+         orderDate: updatedOrder.orderDate,
+         expectedDeliveryDate: updatedOrder.expectedArrivalDate,
+         items: updatedOrder.items,
+         shippingAddress: updatedOrder.shippingAddress,
+         notes: updatedOrder.notes,
+         priority: updatedOrder.priority
+       };
+    } catch (error) {
+      this.logger.error(`Error updating vendor order: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async updateVendorOrderStatus(orderId: string, status: string, userId: string, tenantId: string, vendorProfile?: string): Promise<any> {
+    try {
+      const vendorIdToUse = vendorProfile || userId;
+      this.logger.log(`Updating order ${orderId} status to ${status} for vendor: ${vendorIdToUse}`);
+
+      // Verify the order belongs to this vendor
+      const existingOrder = await this.orderModel.findOne({
+        _id: new Types.ObjectId(orderId),
+        vendorId: new Types.ObjectId(vendorIdToUse),
+        tenantId: new Types.ObjectId(tenantId),
+        $or: [
+          { isDeleted: false },
+          { isDeleted: { $exists: false } }
+        ]
+      });
+
+      if (!existingOrder) {
+        throw new NotFoundException(`Order with ID ${orderId} not found for this vendor`);
+      }
+
+      // Update the order status
+      const updatedOrder = await this.orderModel
+        .findByIdAndUpdate(
+          orderId,
+          {
+            status,
+            updatedAt: new Date()
+          },
+          { new: true }
+        )
+        .populate('supplierId', 'name')
+        .exec();
+
+      return {
+        id: updatedOrder._id.toString(),
+        _id: updatedOrder._id.toString(),
+        orderId: updatedOrder.orderId,
+        status: updatedOrder.status,
+        message: `Order status updated to ${status}`
+      };
+    } catch (error) {
+      this.logger.error(`Error updating vendor order status: ${error.message}`);
       throw error;
     }
   }

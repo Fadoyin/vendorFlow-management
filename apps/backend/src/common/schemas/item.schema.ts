@@ -132,6 +132,9 @@ export class ItemSupplier {
   @Prop({ type: Types.ObjectId, ref: 'Vendor', required: true })
   vendorId: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  supplierId: Types.ObjectId;
+
   @Prop({ type: String, trim: true })
   vendorItemCode: string;
 
@@ -219,6 +222,9 @@ export class Item extends BaseDocument {
   @Prop({ type: Types.ObjectId, ref: 'Vendor' })
   primarySupplier: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'Vendor' })
+  vendorId: Types.ObjectId;
+
   @Prop({ type: [Types.ObjectId], ref: 'PurchaseOrder', default: [] })
   purchaseOrders: Types.ObjectId[];
 
@@ -257,6 +263,7 @@ ItemSchema.index({ sku: 1 });
 ItemSchema.index({ tenantId: 1, sku: 1 });
 ItemSchema.index({ tenantId: 1, status: 1 });
 ItemSchema.index({ tenantId: 1, category: 1 });
+ItemSchema.index({ tenantId: 1, vendorId: 1 });
 ItemSchema.index({ tenantId: 1, 'inventory.currentStock': 1 });
 ItemSchema.index({ tenantId: 1, 'inventory.availableStock': 1 });
 ItemSchema.index({ barcode: 1 });

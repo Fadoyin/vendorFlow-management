@@ -323,18 +323,34 @@ export class UsersService {
           }
         ]),
         
-        // Inventory stats
+        // Inventory stats - Fixed field paths and enhanced calculation
         this.itemModel.aggregate([
           { $match: filter },
+          {
+            $addFields: {
+              // Calculate item value: (costPrice || 0) * (currentStock || 0)
+              itemValue: {
+                $multiply: [
+                  { $ifNull: ['$pricing.costPrice', 0] },
+                  { $ifNull: ['$inventory.currentStock', 0] }
+                ]
+              }
+            }
+          },
           {
             $group: {
               _id: null,
               totalItems: { $sum: 1 },
-              totalValue: { $sum: { $multiply: ['$pricing.cost', '$inventory.currentStock'] } },
+              totalValue: { $sum: '$itemValue' },
               lowStockCount: {
                 $sum: {
                   $cond: [
-                    { $lte: ['$inventory.currentStock', '$inventory.reorderLevel'] },
+                    { 
+                      $lte: [
+                        { $ifNull: ['$inventory.currentStock', 0] }, 
+                        { $ifNull: ['$inventory.reorderPoint', 0] }
+                      ] 
+                    },
                     1,
                     0
                   ]

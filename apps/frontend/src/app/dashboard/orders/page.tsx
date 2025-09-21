@@ -772,15 +772,24 @@ export default function OrdersOverview() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+  const [totalOrders, setTotalOrders] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
 
   useEffect(() => {
     loadOrders()
-  }, [searchQuery, statusFilter])
+  }, [searchQuery, statusFilter, currentPage, pageSize])
 
   const loadOrders = async () => {
     try {
       setLoading(true)
-      const params: any = { page: 1, limit: 50 }
+      const params: any = { 
+        page: currentPage, 
+        limit: pageSize 
+      }
       
       if (searchQuery.trim()) {
         params.search = searchQuery.trim()
@@ -790,13 +799,24 @@ export default function OrdersOverview() {
         params.status = statusFilter
       }
 
+      console.log('📋 Loading orders with params:', params)
       const response = await ordersApi.getAll(params)
+      console.log('📋 Orders API response:', response)
       
       if (response && ((response as any)?.data?.orders || (response as any)?.orders)) {
-        setOrders((response as any)?.data?.orders || (response as any)?.orders)
+        const ordersData = (response as any)?.data?.orders || (response as any)?.orders
+        const total = (response as any)?.data?.total || (response as any)?.total || ordersData.length
+        
+        setOrders(ordersData)
+        setTotalOrders(total)
+        setTotalPages(Math.ceil(total / pageSize))
         setError('')
+        
+        console.log(`📊 Orders loaded: ${ordersData.length} of ${total} total`)
       } else {
         setOrders([])
+        setTotalOrders(0)
+        setTotalPages(0)
         setError('')
       }
     } catch (error) {
@@ -810,6 +830,27 @@ export default function OrdersOverview() {
 
   const handleOrderCreated = () => {
     loadOrders()
+  }
+
+  // Pagination handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize)
+    setCurrentPage(1) // Reset to first page when changing page size
+  }
+
+  // Reset pagination when filters change
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query)
+    setCurrentPage(1)
+  }
+
+  const handleStatusFilterChange = (status: string) => {
+    setStatusFilter(status)
+    setCurrentPage(1)
   }
 
   const getStatusColor = (status: string) => {
@@ -891,7 +932,7 @@ export default function OrdersOverview() {
                   type="text"
                   placeholder="Search orders..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -903,7 +944,7 @@ export default function OrdersOverview() {
               
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => handleStatusFilterChange(e.target.value)}
                 className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Statuses</option>
@@ -913,6 +954,17 @@ export default function OrdersOverview() {
                 <option value="delivered">Delivered</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={10}>10 per page</option>
+                <option value={25}>25 per page</option>
+                <option value={50}>50 per page</option>
+                <option value={100}>100 per page</option>
+              </select>
             </div>
           </div>
         </div>
@@ -920,8 +972,12 @@ export default function OrdersOverview() {
         {/* Orders Table */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Orders</h2>
-            <p className="text-sm text-gray-600 mt-1">{orders.length} total orders</p>
+            <h2 className="text-lg font-semibold text-gray-900">Orders Management</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Showing {orders.length} of {totalOrders} orders
+              {searchQuery && ` - filtered by "${searchQuery}"`}
+              {statusFilter !== 'all' && ` - status: ${statusFilter}`}
+            </p>
           </div>
           
           <div className="overflow-x-auto">
@@ -1025,6 +1081,62 @@ export default function OrdersOverview() {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              <div className="flex items-center text-sm text-gray-500">
+                Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalOrders)} of {totalOrders} orders
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => handlePageChange(pageNum)}
+                        className={`px-3 py-2 text-sm border rounded-md ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Create Order Modal */}

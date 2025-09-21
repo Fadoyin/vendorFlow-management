@@ -80,6 +80,15 @@ export class CostForecastResultDto {
   @ApiProperty({ description: 'Overall growth rate percentage' })
   overallGrowthRate: number;
 
+  @ApiProperty({ description: 'Total forecasted amount' })
+  totalForecast: number;
+
+  @ApiProperty({ description: 'Average monthly cost' })
+  averageMonthlyCost: number;
+
+  @ApiProperty({ description: 'Confidence level of the forecast' })
+  confidenceLevel: number;
+
   @ApiProperty({ description: 'Seasonal factors detected' })
   seasonalFactors: Array<{
     period: string;
@@ -95,8 +104,27 @@ export class CostForecastResultDto {
     recommendations: string[];
   };
 
+  @ApiProperty({ description: 'Risk factors array' })
+  riskFactors?: Array<{
+    factor: string;
+    impact: string;
+    mitigation: string;
+  }>;
+
+  @ApiProperty({ description: 'Recommendations for cost optimization' })
+  recommendations?: string[];
+
+  @ApiProperty({ description: 'Forecast metadata' })
+  metadata?: {
+    generatedAt: string;
+    modelVersion: string;
+    dataQuality: number;
+    forecastPeriod?: number;
+    modelUsed?: string;
+  };
+
   @ApiProperty({ description: 'Summary statistics' })
-  summary: {
+  summary?: {
     totalForecastValue: number;
     averageMonthlyCost: number;
     peakMonth: string;

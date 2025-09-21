@@ -1,87 +1,41 @@
+import { PartialType } from '@nestjs/mapped-types';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsString,
-  IsOptional,
-  MinLength,
-  IsUrl,
-  ValidateIf,
-} from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsEnum } from 'class-validator';
+import { CreateUserDto, UserRole } from './create-user.dto';
 
-export class UpdateUserDto {
+export class UpdateUserDto extends PartialType(CreateUserDto) {
   @ApiPropertyOptional({ description: 'User first name' })
   @IsOptional()
   @IsString()
-  @MinLength(2)
   firstName?: string;
 
   @ApiPropertyOptional({ description: 'User last name' })
   @IsOptional()
   @IsString()
-  @MinLength(2)
   lastName?: string;
+
+  @ApiPropertyOptional({ description: 'User email address' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ description: 'User role', enum: UserRole })
+  @IsOptional()
+  @IsEnum(UserRole)
+  role?: UserRole;
 
   @ApiPropertyOptional({ description: 'User phone number' })
   @IsOptional()
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ description: 'User department' })
+  @ApiPropertyOptional({ description: 'User company name' })
   @IsOptional()
   @IsString()
-  department?: string;
+  company?: string;
 
-  @ApiPropertyOptional({ description: 'User job title' })
+  @ApiPropertyOptional({ description: 'User status' })
   @IsOptional()
   @IsString()
-  jobTitle?: string;
-
-  @ApiPropertyOptional({ description: 'Company name' })
-  @IsOptional()
-  @IsString()
-  companyName?: string;
-
-  @ApiPropertyOptional({ description: 'Business type' })
-  @IsOptional()
-  @IsString()
-  businessType?: string;
-
-  @ApiPropertyOptional({ description: 'Tax ID' })
-  @IsOptional()
-  @IsString()
-  taxId?: string;
-
-  @ApiPropertyOptional({ description: 'Company website' })
-  @IsOptional()
-  @ValidateIf((o) => o.website && o.website.trim() !== '')
-  @IsUrl({}, { message: 'Website must be a valid URL' })
-  website?: string;
-
-  @ApiPropertyOptional({ description: 'Street address' })
-  @IsOptional()
-  @IsString()
-  streetAddress?: string;
-
-  @ApiPropertyOptional({ description: 'City' })
-  @IsOptional()
-  @IsString()
-  city?: string;
-
-  @ApiPropertyOptional({ description: 'State or province' })
-  @IsOptional()
-  @IsString()
-  state?: string;
-
-  @ApiPropertyOptional({ description: 'ZIP or postal code' })
-  @IsOptional()
-  @IsString()
-  zipCode?: string;
-
-  @ApiPropertyOptional({ description: 'Country' })
-  @IsOptional()
-  @IsString()
-  country?: string;
-
-  @ApiPropertyOptional({ description: 'Additional metadata' })
-  @IsOptional()
-  metadata?: Record<string, any>;
+  status?: string;
 }

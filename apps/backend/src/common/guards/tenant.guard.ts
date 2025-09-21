@@ -32,6 +32,8 @@ export class TenantGuard implements CanActivate {
     request.tenantId = user.tenantId;
     request.userRole = user.role;
     request.userId = user.sub;
+    request.vendorProfile = user.vendorProfile;
+    request.supplierProfile = user.supplierProfile;
 
     return true;
   }

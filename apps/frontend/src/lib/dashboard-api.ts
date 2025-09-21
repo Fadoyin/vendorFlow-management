@@ -27,8 +27,9 @@ export interface DashboardStats {
 }
 
 export interface ActivityLog {
-  id: string
-  type: 'order' | 'inventory' | 'vendor' | 'payment' | 'user'
+  id?: string
+  _id?: string
+  type: 'order' | 'inventory' | 'vendor' | 'payment' | 'user' | 'system'
   action: string
   description: string
   timestamp: string
@@ -42,16 +43,21 @@ class DashboardApiService {
   // Get comprehensive dashboard statistics
   async getDashboardStats(): Promise<DashboardStats> {
     try {
+      console.log('🔄 Fetching admin dashboard stats...')
+      
       // Use the new admin dashboard stats endpoint for real-time data
       const response = await apiService.request('/users/admin/dashboard-stats', {
         method: 'GET'
       })
       
+      console.log('📊 Dashboard stats API response:', response)
+      
       if (response.error) {
+        console.error('❌ Dashboard stats API error:', response.error)
         throw new Error(response.error)
       }
 
-      return {
+      const statsData = {
         orders: {
           total: response.data?.orders?.total || 0,
           monthlyGrowth: response.data?.orders?.monthlyGrowth || 0,
@@ -75,10 +81,15 @@ class DashboardApiService {
           totalValue: response.data?.inventory?.totalValue || 0
         }
       }
+      
+      console.log('✅ Processed dashboard stats:', statsData)
+      return statsData
     } catch (error) {
-      console.error('Error fetching dashboard stats:', error)
-      // Return fallback data if API fails
-      return this.getFallbackStats()
+      console.error('❌ Error fetching dashboard stats:', error)
+      console.log('🔄 Falling back to individual API calls...')
+      
+      // Fallback to individual API calls if main endpoint fails
+      return this.getFallbackStatsFromIndividualAPIs()
     }
   }
 
@@ -193,17 +204,28 @@ class DashboardApiService {
   // Get recent activity logs
   async getRecentActivity(limit: number = 10): Promise<ActivityLog[]> {
     try {
+      console.log(`🔄 Fetching recent activity (limit: ${limit})...`)
+      
       const response = await apiService.request(`/activity-logs?limit=${limit}&sort=createdAt:desc`, {
         method: 'GET'
       })
       
+      console.log('📋 Activity logs API response:', response)
+      
       if (response.error) {
+        console.error('❌ Activity logs API error:', response.error)
         throw new Error(response.error)
       }
 
-      return response.data?.activities || []
+      // Handle different response formats
+      const activities = response.data?.activities || response.data || []
+      console.log(`✅ Found ${activities.length} activity logs`)
+      
+      return activities
     } catch (error) {
-      console.error('Error fetching recent activity:', error)
+      console.error('❌ Error fetching recent activity:', error)
+      console.log('🔄 Using fallback activity data...')
+      
       // Return fallback activity data
       return this.getFallbackActivity()
     }
@@ -224,7 +246,42 @@ class DashboardApiService {
     }
   }
 
-  // Fallback stats when API is unavailable
+  // Fallback to individual API calls when main endpoint fails
+  private async getFallbackStatsFromIndividualAPIs(): Promise<DashboardStats> {
+    try {
+      console.log('🔄 Fetching stats from individual endpoints...')
+      
+      const [ordersStats, vendorsStats, inventoryStats, paymentsStats] = await Promise.allSettled([
+        this.getOrdersStats(),
+        this.getVendorsStats(), 
+        this.getInventoryStats(),
+        this.getPaymentsStats()
+      ])
+
+      const stats: DashboardStats = {
+        orders: ordersStats.status === 'fulfilled' ? ordersStats.value : {
+          total: 0, monthlyGrowth: 0, todayCount: 0, pendingCount: 0
+        },
+        revenue: paymentsStats.status === 'fulfilled' ? paymentsStats.value : {
+          total: 0, monthlyGrowth: 0, thisMonth: 0, lastMonth: 0
+        },
+        vendors: vendorsStats.status === 'fulfilled' ? vendorsStats.value : {
+          total: 0, newThisWeek: 0, activeCount: 0
+        },
+        inventory: inventoryStats.status === 'fulfilled' ? inventoryStats.value : {
+          totalItems: 0, lowStockCount: 0, totalValue: 0
+        }
+      }
+
+      console.log('📊 Fallback stats assembled:', stats)
+      return stats
+    } catch (error) {
+      console.error('❌ Error in fallback stats:', error)
+      return this.getFallbackStats()
+    }
+  }
+
+  // Fallback stats when all APIs are unavailable
   private getFallbackStats(): DashboardStats {
     return {
       orders: {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { DashboardLayout } from '@/components/ui/DashboardLayout'
 import { AdminRoute } from '@/components/auth/RoleProtectedRoute'
 import { dashboardApi, type DashboardStats, type ActivityLog } from '@/lib/dashboard-api'
@@ -12,15 +12,28 @@ export default function Dashboard() {
   const [activities, setActivities] = useState<ActivityLog[]>([])
   const [refreshing, setRefreshing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  
+  // Use ref to track loading state without causing re-renders
+  const isLoadingRef = useRef(false)
 
   // Load dashboard data
   const loadDashboardData = useCallback(async (isRefresh = false) => {
+    // Prevent multiple simultaneous API calls
+    if (isLoadingRef.current) {
+      console.log('⏳ Dashboard data already loading, skipping duplicate call')
+      return
+    }
+
     try {
+      isLoadingRef.current = true
+      
       if (isRefresh) {
         setRefreshing(true)
       } else {
         setLoading(true)
       }
+
+      console.log('🚀 Starting dashboard data load...')
 
       // Fetch stats and activity in parallel
       const [dashboardStats, recentActivity] = await Promise.all([
@@ -31,11 +44,14 @@ export default function Dashboard() {
       setStats(dashboardStats)
       setActivities(recentActivity)
       setLastRefresh(new Date())
+      
+      console.log('✅ Dashboard data loaded successfully')
     } catch (error) {
-      console.error('Error loading dashboard data:', error)
+      console.error('❌ Error loading dashboard data:', error)
     } finally {
       setLoading(false)
       setRefreshing(false)
+      isLoadingRef.current = false
     }
   }, [])
 
@@ -51,7 +67,7 @@ export default function Dashboard() {
     }, 60000) // 60 seconds
 
     return () => clearInterval(interval)
-  }, [loadDashboardData])
+  }, []) // Remove loadDashboardData dependency since it's now stable
 
   // Manual refresh handler
   const handleRefresh = () => {
@@ -263,10 +279,11 @@ export default function Dashboard() {
           </div>
           <div className="space-y-4">
             {activities.length > 0 ? (
-              activities.map((activity) => {
+              activities.map((activity, index) => {
                 const color = dashboardApi.getActivityColor(activity.type)
+                const activityKey = activity.id || activity._id || `activity-${index}`
                 return (
-                  <div key={activity.id} className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div key={activityKey} className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
                     <div className={`w-8 h-8 bg-${color}-100 rounded-full flex items-center justify-center`}>
                       <span className={`text-${color}-600 text-sm`}>
                         {dashboardApi.getActivityIcon(activity.type)}

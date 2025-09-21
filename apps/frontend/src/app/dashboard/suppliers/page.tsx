@@ -3,8 +3,62 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { DashboardLayout } from '@/components/ui/DashboardLayout'
+import { useUserRole } from '@/hooks/useUserRole'
 
-import { suppliersApi, type Supplier, type CreateSupplierDto, type SupplierSearchParams } from '@/lib/api'
+import { suppliersApi } from '@/lib/api'
+
+// Define types for suppliers based on actual API response
+interface Supplier {
+  _id: string
+  supplierName: string
+  supplierCode: string
+  category: string
+  description?: string
+  website?: string
+  phone: string
+  email: string
+  address: string
+  city: string
+  state: string
+  zipCode: string
+  country: string
+  contactPerson?: string
+  contactPhone?: string
+  contactEmail?: string
+  paymentTerms: string
+  creditLimit: number
+  status: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+interface CreateSupplierDto {
+  supplierName: string
+  supplierCode: string
+  category: string
+  description?: string
+  website?: string
+  phone: string
+  email: string
+  address: string
+  city: string
+  state: string
+  zipCode: string
+  country: string
+  contactPerson?: string
+  contactPhone?: string
+  contactEmail?: string
+  paymentTerms: string
+  creditLimit: number
+}
+
+interface SupplierSearchParams {
+  page?: number
+  limit?: number
+  search?: string
+  category?: string
+  status?: string
+}
 
 // Helper functions
 const getStatusColor = (status: string) => {
@@ -415,6 +469,7 @@ function ViewSupplierModal({ isOpen, onClose, supplier }: {
 
 export default function SuppliersOverview() {
   const pathname = usePathname()
+  const { role, isAdmin } = useUserRole()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
@@ -555,15 +610,18 @@ export default function SuppliersOverview() {
           <div className="flex-1">
             {/* Title is handled by DashboardLayout, no duplication needed */}
           </div>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 w-full sm:w-auto justify-center sm:justify-start"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            <span>Add New Supplier</span>
-          </button>
+          {/* Hide Add New Supplier button for admins - suppliers should be registered separately */}
+          {!isAdmin && (
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2 w-full sm:w-auto justify-center sm:justify-start"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span>Add New Supplier</span>
+            </button>
+          )}
         </div>
 
         {/* Filter and Search Bar */}
