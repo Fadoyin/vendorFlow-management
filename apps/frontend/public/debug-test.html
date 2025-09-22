@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #f0f0f0; 
+        }
+        .test-box { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin: 10px 0; 
+            border: 2px solid #ccc;
+        }
+        .success { border-color: green; background: #e8f5e8; }
+        .error { border-color: red; background: #ffe8e8; }
+        button { 
+            background: #007bff; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px;
+        }
+        button:hover { background: #0056b3; }
+        #log { 
+            background: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            padding: 10px; 
+            margin: 10px 0; 
+            font-family: monospace; 
+            max-height: 200px; 
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Debug Test Page</h1>
+    
+    <div class="test-box success">
+        <h2>✅ HTML Loading Test</h2>
+        <p>If you can see this, the HTML is loading correctly.</p>
+    </div>
+    
+    <div class="test-box" id="js-test">
+        <h2>❓ JavaScript Test</h2>
+        <p id="js-status">JavaScript status: Testing...</p>
+        <button onclick="testClick()">Click to Test JavaScript</button>
+        <button onclick="testConsole()">Test Console Logs</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div class="test-box">
+        <h2>📡 Network Test</h2>
+        <button onclick="testAPI()">Test Backend API</button>
+        <p id="api-status">API status: Not tested</p>
+    </div>
+    
+    <div class="test-box">
+        <h2>📝 Log Output</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // Test if JavaScript is working
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎯 Debug page loaded!');
+            addLog('🎯 JavaScript is working!');
+            
+            document.getElementById('js-status').textContent = 'JavaScript status: ✅ Working!';
+            document.getElementById('js-test').className = 'test-box success';
+            
+            // Test console logging
+            console.log('📝 Regular log');
+            console.error('🔥 Error log');
+            console.warn('⚠️ Warning log');
+            console.info('ℹ️ Info log');
+        });
+
+        function addLog(message) {
+            const log = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            log.innerHTML += `[${time}] ${message}<br>`;
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function testClick() {
+            addLog('🔘 Button clicked successfully!');
+            alert('Button click test successful!');
+        }
+
+        function testConsole() {
+            console.log('🧪 Test console log');
+            console.error('🧪 Test console error');
+            console.warn('🧪 Test console warning');
+            addLog('🧪 Console tests executed - check browser console');
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function testAPI() {
+            addLog('📡 Testing backend API...');
+            document.getElementById('api-status').textContent = 'API status: Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:3004/forecasts/inventory-forecast', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        inventoryItems: [{
+                            itemId: 'test-001',
+                            itemName: 'Test Item',
+                            currentStock: 100,
+                            reorderLevel: 50,
+                            leadTime: 7,
+                            minimumStock: 20,
+                            category: 'Test',
+                            vendorId: 'vendor-001',
+                            unitCost: 25
+                        }],
+                        forecastPeriod: 30,
+                        timestamp: Date.now()
+                    })
+                });
+                
+                const data = await response.text();
+                addLog(`📡 API Response (${response.status}): ${data.substring(0, 200)}...`);
+                
+                if (response.ok) {
+                    document.getElementById('api-status').textContent = 'API status: ✅ Working!';
+                } else {
+                    document.getElementById('api-status').textContent = `API status: ❌ Error ${response.status}`;
+                }
+            } catch (error) {
+                addLog(`📡 API Error: ${error.message}`);
+                document.getElementById('api-status').textContent = 'API status: ❌ Failed';
+            }
+        }
+    </script>
+</body>
+</html> 

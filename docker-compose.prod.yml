@@ -4,93 +4,114 @@ services:
   # Redis
   redis:
     image: redis:7-alpine
-    container_name: vendorflow-redis
+    container_name: vendorflow-redis-prod
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - vendor-network
+      - vendorflow-network
+    command: redis-server --appendonly yes
 
   # Backend API (NestJS)
   backend:
     build:
       context: ./apps/backend
       dockerfile: Dockerfile
-    container_name: vendorflow-backend
+    container_name: vendorflow-backend-prod
     restart: unless-stopped
     ports:
-      - "3004:3001"
+      - "3001:3001"
     env_file:
-      - .env
+      - .env.prod
     environment:
       NODE_ENV: production
       PORT: 3001
       REDIS_URL: redis://redis:6379
+      # All other environment variables are loaded from .env.prod
     depends_on:
       - redis
     networks:
-      - vendor-network
+      - vendorflow-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # ML Service (FastAPI)
   ml-service:
     build:
       context: ./apps/ml-service
       dockerfile: Dockerfile
-    container_name: vendorflow-ml
+    container_name: vendorflow-ml-prod
     restart: unless-stopped
     ports:
-      - "8002:8000"
+      - "8000:8000"
     env_file:
-      - .env
+      - .env.prod
     environment:
       REDIS_URL: redis://redis:6379
+      MODEL_PATH: /app/models
+      # All other environment variables (including AWS keys) are loaded from .env.prod
+    volumes:
+      - ml_models:/app/models
     depends_on:
       - redis
     networks:
-      - vendor-network
+      - vendorflow-network
 
   # Frontend (Next.js)
   frontend:
     build:
       context: ./apps/frontend
       dockerfile: Dockerfile
-    container_name: vendorflow-frontend
+    container_name: vendorflow-frontend-prod
     restart: unless-stopped
     ports:
-      - "3005:3005"
+      - "3000:3000"
     env_file:
-      - .env
+      - .env.prod
     environment:
       NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:3001
       NEXT_INTERNAL_API_URL: http://backend:3001
+      NEXT_PUBLIC_ML_URL: http://localhost:8000
+      # All other environment variables (including Stripe keys) are loaded from .env.prod
     depends_on:
       - backend
     networks:
-      - vendor-network
+      - vendorflow-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  # Nginx reverse proxy
+  # Nginx Reverse Proxy
   nginx:
     image: nginx:alpine
-    container_name: vendorflow-nginx
+    container_name: vendorflow-nginx-prod
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - frontend
       - backend
-      - ml-service
     networks:
-      - vendor-network
+      - vendorflow-network
 
 volumes:
   redis_data:
+  ml_models:
 
 networks:
-  vendor-network:
+  vendorflow-network:
     driver: bridge 

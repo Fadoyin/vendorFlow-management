@@ -49,6 +49,13 @@ class ApiService {
     // Ensure we don't double-add /api if it's already in the URL
     this.baseURL = baseUrl.endsWith('/api') ? baseUrl : baseUrl + '/api';
     
+    // Debug logging
+    console.log('🔧 API Service initialized:', {
+      env_var: process.env.NEXT_PUBLIC_API_URL,
+      baseUrl,
+      finalBaseURL: this.baseURL
+    });
+    
     // Initialize token from storage on client side only
     if (typeof window !== 'undefined') {
       this.initializeFromStorage();

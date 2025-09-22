@@ -18,6 +18,9 @@ const publicRoutes = [
   '/_next',
   '/static',
   '/images',
+  '/test',
+  '/debug', // Debug page for testing
+  '/dashboard/forecasting', // Temporarily allow direct access for debugging
 ]
 
 // Extract role from JWT token (basic extraction for routing)

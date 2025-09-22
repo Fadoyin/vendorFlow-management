@@ -627,7 +627,9 @@ export class ForecastsService {
     userRole: string,
   ): Promise<InventoryForecastResultDto> {
     try {
-      this.logger.log(`Generating inventory forecast for ${inventoryForecastDto.inventoryItems.length} items`);
+      this.logger.log(`🚀 BACKEND: Generating inventory forecast for tenant ${tenantId}, user ${userId}, role ${userRole}`)
+      this.logger.log(`📊 BACKEND: Processing ${inventoryForecastDto.inventoryItems.length} items for ${inventoryForecastDto.forecastPeriod} days`)
+      this.logger.log(`🔍 BACKEND: Request data:`, JSON.stringify(inventoryForecastDto, null, 2))
 
       // Generate forecasts for each item
       const itemForecasts = inventoryForecastDto.inventoryItems.map(item => {
@@ -773,6 +775,9 @@ export class ForecastsService {
         },
       };
 
+      this.logger.log(`✅ BACKEND: Successfully generated inventory forecast with ${result.itemForecasts.length} items`)
+      this.logger.log(`📋 BACKEND: Summary - Total: ${result.summary.totalItems}, Reorder needed: ${result.summary.itemsRequiringReorder}, Critical: ${result.summary.criticalStockItems}`)
+      
       return result;
     } catch (error) {
       this.logger.error('Error generating inventory forecast:', error);
